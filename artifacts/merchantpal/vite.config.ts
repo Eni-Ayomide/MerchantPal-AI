@@ -15,16 +15,15 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    outDir: path.resolve(import.meta.dirname, 'dist/public'),
+    outDir: path.resolve(import.meta.dirname, 'dist'),
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
-    host: 'localhost',
-    strictPort: true,
+    port: Number(process.env.PORT) || 5173,
+    host: '0.0.0.0',
   },
   preview: {
-    port: 4173,
-    host: 'localhost',
+    port: Number(process.env.PORT) || 4173,
+    host: '0.0.0.0',
   },
 });

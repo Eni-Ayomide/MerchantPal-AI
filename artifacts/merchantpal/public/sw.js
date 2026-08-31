@@ -1,5 +1,5 @@
-const CACHE_NAME = 'merchantpal-shell-v1';
-const APP_SHELL = ['/', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
+const CACHE_NAME = 'merchantpal-shell-v2';
+const APP_SHELL = ['/', '/manifest.webmanifest', '/merchantpal-mark.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
 });
