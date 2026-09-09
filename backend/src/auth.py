@@ -48,7 +48,7 @@ def get_current_user(
 
 
 def user_id(user: dict[str, Any]) -> str:
-    return str(user["sub"])
+    return str(user.get("sub") or user.get("id"))
 
 
 def scope_id(user: dict[str, Any]) -> str | None:

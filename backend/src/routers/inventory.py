@@ -17,8 +17,24 @@ def create_inventory_item(payload: ProductCreate, db: Session = Depends(get_db),
 
 
 @router.get("", response_model=list[ProductRead])
-def get_inventory(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)) -> list[ProductRead]:
-    return ProductRepository(db).list_owned(scope_id(current_user), skip=skip, limit=limit)
+def get_inventory(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> list[ProductRead]:
+    owner_id = scope_id(current_user)
+    print("INVENTORY DEBUG OWNER:", owner_id)
+
+    products = ProductRepository(db).list_owned(
+        owner_id,
+        skip=skip,
+        limit=limit,
+    )
+
+    print("INVENTORY DEBUG PRODUCTS:", [(p.name, p.owner_id) for p in products])
+
+    return products
 
 
 @router.get("/{product_id}", response_model=ProductRead)
