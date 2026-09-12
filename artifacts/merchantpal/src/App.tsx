@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Switch, useLocation, useParams } from 'wouter';
 import {
   ArrowLeft, ArrowRight, BarChart3, Bell, Bot, Check, ChevronRight, CircleHelp, Download,
@@ -8,14 +8,13 @@ import {
   WifiOff, X, Zap,
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { defaultProducts, defaultTransactions, readLocal, writeLocal, type MockProduct, type MockTransaction, type MockUser } from '@/lib/mock-services';
-import { api, ApiError, money, type ApiProduct, type ApiTransaction } from '@/lib/api';
+import { readLocal, writeLocal, type MockProduct, type MockTransaction, type MockUser } from '@/lib/mock-services';
+import { api, ApiError, money, type Analytics, type ApiProduct, type ApiTransaction, type Notification } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 const naira = (amount: number) => `₦${amount.toLocaleString('en-NG')}`;
-const initialProducts = defaultProducts;
-const initialTransactions = defaultTransactions;
 const LOW_STOCK_THRESHOLD = 10;
+
 type Product = MockProduct;
 type Transaction = MockTransaction;
 const read = readLocal;
@@ -39,8 +38,42 @@ const transactionFromApi = (transaction: ApiTransaction): Transaction => ({
   status: transaction.status,
   date: new Date(transaction.created_at).toLocaleDateString('en-NG'),
 });
-const fallbackUser: MockUser = { name: 'Amina', business: 'Amina’s Kitchen', identifier: 'demo@merchantpal.app' };
-const getCurrentUser = () => read<MockUser>('mp-user', fallbackUser);
+const getCurrentUser = (): MockUser | null => read<MockUser | null>('mp-user', null);
+
+async function syncCurrentUser(): Promise<MockUser> {
+  if (!supabase) return getCurrentUser() ?? EMPTY_USER;
+
+  const [{ data: authResult }, profile] = await Promise.all([
+    supabase.auth.getUser(),
+    api.profile.get(),
+  ]);
+
+  const authName = authResult.user?.user_metadata?.full_name?.trim() || '';
+  const profileName = profile.name?.trim() || '';
+  const name = profileName && profileName !== 'Merchant'
+    ? profileName
+    : authName || 'Merchant';
+
+  const resolved: MockUser = {
+    ...profile,
+    name,
+    identifier: authResult.user?.email || getCurrentUser()?.identifier || '',
+    isNew: false,
+  };
+
+  if (name !== profileName) {
+    const saved = await api.profile.update({
+      name,
+      business: profile.business,
+      category: profile.category,
+      description: profile.description,
+    });
+    Object.assign(resolved, saved, { name });
+  }
+
+  write('mp-user', resolved);
+  return resolved;
+}
 const initials = (name: string) => name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
 const isLowStock = (stock: number) => stock < LOW_STOCK_THRESHOLD;
 const stockLabel = (stock: number) => stock === 0 ? 'Out of stock' : isLowStock(stock) ? 'Low stock' : 'Healthy';
@@ -85,13 +118,39 @@ function BottomNav() {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const [, navigate] = useLocation();
   const [offline, setOffline] = useState(!navigator.onLine);
+  const [authReady, setAuthReady] = useState(!supabase);
+
   useEffect(() => {
-    const goOffline = () => setOffline(true); const goOnline = () => setOffline(false);
-    window.addEventListener('offline', goOffline); window.addEventListener('online', goOnline);
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
-    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
-  }, []);
+    const goOffline = () => setOffline(true);
+    const goOnline = () => setOffline(false);
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+}
+
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (!data.session) navigate('/login');
+        setAuthReady(true);
+      }).catch(() => {
+        navigate('/login');
+        setAuthReady(true);
+      });
+    }
+
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', goOnline);
+    };
+  }, [navigate]);
+
+  if (!authReady) {
+    return <div className="app-shell"><div className="app-frame"><main className="screen-content"><p className="muted">Checking your account…</p></main></div></div>;
+  }
+
   return <div className="app-shell"><div className="app-frame">
     {offline && <div className="offline-strip"><WifiOff size={14} /> Working offline · your changes stay on this device</div>}
     {children}<BottomNav />
@@ -117,33 +176,126 @@ function Welcome() {
 function Login({ signup = false }: { signup?: boolean }) {
   const [, navigate] = useLocation();
   const [form, setForm] = useState({ name: '', identifier: '', password: '' });
-  const submit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (signup) {
-      write('mp-pending-user', { name: form.name || 'New merchant', identifier: form.identifier, business: '' });
-      navigate('/setup');
+    if (loading) return;
+
+    if (!supabase) {
+      window.alert('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the frontend environment.');
       return;
     }
-    const accounts = read<MockUser[]>('mp-accounts', []);
-    const existing = accounts.find(account => account.identifier === form.identifier);
-    write('mp-user', existing || { name: form.identifier.split('@')[0] || 'Merchant', business: 'My business', identifier: form.identifier, isNew: !existing });
-    navigate('/');
+
+    if (!form.identifier.includes('@')) {
+      window.alert('For this hackathon build, please use an email address to create or access your account.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (signup) {
+        const { data, error } = await supabase.auth.signUp({
+          email: form.identifier.trim(),
+          password: form.password,
+          options: { data: { full_name: form.name.trim() || 'Merchant' } },
+        });
+
+        if (error) throw error;
+
+        if (!data.session) {
+          window.alert('Account created. Check your email to confirm your account, then log in.');
+          navigate('/login');
+          return;
+        }
+
+        write('mp-pending-user', {
+          name: form.name.trim() || 'Merchant',
+          identifier: form.identifier.trim(),
+          business: '',
+        });
+        navigate('/setup');
+        return;
+      }
+
+const { error } = await supabase.auth.signInWithPassword({
+  email: form.identifier.trim(),
+  password: form.password,
+});
+
+if (error) throw error;
+
+const {
+  data: { user: authUser },
+} = await supabase.auth.getUser();
+
+const profile = await api.profile.get();
+
+const authName =
+  authUser?.user_metadata?.full_name?.trim() || 'Merchant';
+
+const isNewProfile =
+  !profile.business || profile.business === 'My business';
+
+if (isNewProfile) {
+  write('mp-pending-user', {
+    name: authName,
+    identifier: form.identifier.trim(),
+    business: '',
+  });
+
+  navigate('/setup');
+  return;
+}
+
+const resolvedName =
+  profile.name?.trim() && profile.name.trim() !== 'Merchant'
+    ? profile.name.trim()
+    : authName;
+
+const resolvedProfile =
+  resolvedName && resolvedName !== profile.name
+    ? await api.profile.update({
+        name: resolvedName,
+        business: profile.business,
+        category: profile.category,
+        description: profile.description,
+      })
+    : profile;
+
+write('mp-user', {
+  ...resolvedProfile,
+  identifier: form.identifier.trim(),
+  isNew: false,
+});
+
+navigate('/');
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      window.alert(error instanceof Error ? error.message : 'Could not complete authentication.');
+    } finally {
+      setLoading(false);
+    }
   };
   return <PublicFrame title={signup ? 'Create account' : 'Welcome back'} back="/welcome">
-    <div className="auth-layout"><div className="auth-intro"><BrandLogo small /><span className="eyebrow">{signup ? 'Start small. Grow steady.' : 'Good to see you again.'}</span><h1>{signup ? 'Make room for what matters.' : 'Your numbers,<br />in one place.'}</h1><p>{signup ? 'Set up your private business companion in less than a minute.' : 'Pick up right where you left off.'}</p></div>
+    <div className="auth-layout"><div className="auth-intro"><BrandLogo small /><span className="eyebrow">{signup ? 'Start small. Grow steady.' : 'Good to see you again.'}</span><h1>
+  {signup ? (
+    'Make room for what matters.'
+  ) : (
+    <>
+      Your numbers,
+      <br />
+      in one place.
+    </>
+  )}
+</h1><p>{signup ? 'Set up your private business companion in less than a minute.' : 'Pick up right where you left off.'}</p></div>
       <form className="form-stack" onSubmit={submit}>
-        {signup && <label>Full name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Amina Yusuf" required data-testid="input-name" /></label>}
-        <label>Phone or email<input value={form.identifier} onChange={e => setForm({ ...form, identifier: e.target.value })} placeholder="Enter phone or email" required data-testid="input-identifier" /></label>
+        {signup && <label>Full name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ayomide David" required data-testid="input-name" /></label>}
+        <label>Email address<input type="email" value={form.identifier} onChange={e => setForm({ ...form, identifier: e.target.value })} placeholder="you@example.com" required data-testid="input-identifier" /></label>
         <label>Password<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={signup ? 'Create a password' : 'Enter your password'} required data-testid="input-password" /></label>
         {!signup && <Link className="form-link align-right" href="/login">Forgot password?</Link>}
-        <Button type="submit" className="full-width">{signup ? 'Create my account' : 'Log in'} <ArrowRight size={17} /></Button>
-        <div className="form-divider"><span>or</span></div>
-        <Button variant="outline" onClick={() => {
-          if (signup) write('mp-pending-user', { name: form.name || 'Demo merchant', identifier: form.identifier || 'demo@merchantpal.app', business: '' });
-          else write('mp-user', read('mp-user', { name: 'Amina', business: 'Amina’s Kitchen', identifier: 'demo@merchantpal.app' }));
-          navigate(signup ? '/setup' : '/');
-        }} className="full-width">Demo account is here (till backend is ready)</Button>
-      </form>
+        <Button type="submit" className="full-width" disabled={loading}>{loading ? 'Please wait…' : signup ? 'Create my account' : 'Log in'} {!loading && <ArrowRight size={17} />}</Button>
+          </form>
       <p className="auth-switch">{signup ? 'Already have an account?' : "Don't have an account?"} <Link href={signup ? '/login' : '/signup'} data-testid="link-auth-switch">{signup ? 'Log in' : 'Create account'}</Link></p>
     </div>
   </PublicFrame>;
@@ -151,21 +303,96 @@ function Login({ signup = false }: { signup?: boolean }) {
 
 function Setup() {
   const [, navigate] = useLocation();
-  const pending = read<MockUser>('mp-pending-user', { name: 'Amina', business: 'Amina’s Kitchen', identifier: 'demo@merchantpal.app' });
-  const [business, setBusiness] = useState(pending.business || '');
-  const [offer, setOffer] = useState('food');
-  const [description, setDescription] = useState('');
-  return <PublicFrame title="Business setup" back="/signup"><div className="setup-page"><div className="stepper"><span className="step-active">1</span><i /><span>2</span><i /><span>3</span></div><span className="eyebrow">A little about your business</span><h1>Let’s get you set up.</h1><p className="muted">This helps MerchantPal give you more useful summaries. You can change it later.</p><div className="form-stack"><label>Business name<input value={business} onChange={e => setBusiness(e.target.value)} placeholder="e.g. Amina’s Kitchen" data-testid="input-business-name" /></label><label>What do you offer?<select value={offer} onChange={e => setOffer(e.target.value)}><option value="food">Food and drinks</option><option value="retail">Retail products</option><option value="services">Services</option><option value="other">Something else</option></select></label><label>Tell us a little more <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What do you offer, and what would you like MerchantPal to help you track?" rows={4} /></label><label>Currency<select defaultValue="ngn"><option value="ngn">Nigerian Naira (₦)</option><option value="usd">US Dollar ($)</option></select></label><Button onClick={() => { const user = { ...pending, name: pending.name || 'Merchant', business: business || 'My business', category: offer, description, isNew: !read<MockUser[]>('mp-accounts', []).some(account => account.identifier === pending.identifier) }; write('mp-user', user); write('mp-accounts', [...read<MockUser[]>('mp-accounts', []).filter(account => account.identifier !== user.identifier), user]); write('mp-pending-user', null); navigate('/'); }} className="full-width">Finish setup <ArrowRight size={17} /></Button></div></div></PublicFrame>;
+  const storedPending = read<MockUser | null>('mp-pending-user', null);
+  const storedUser = getCurrentUser();
+  const editing = !storedPending && !!storedUser;
+  const initialUser = storedPending ?? storedUser ?? EMPTY_USER;
+
+  const [name, setName] = useState(initialUser.name || '');
+  const [business, setBusiness] = useState(initialUser.business || '');
+  const [offer, setOffer] = useState(initialUser.category || 'food');
+  const [description, setDescription] = useState(initialUser.description || '');
+  const [identifier, setIdentifier] = useState(initialUser.identifier || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    Promise.all([
+      api.profile.get(),
+      supabase.auth.getUser(),
+    ]).then(([profile, authResult]) => {
+      const authName = authResult.data.user?.user_metadata?.full_name?.trim() || '';
+      const pendingName = storedPending?.name?.trim() || '';
+      const serverName = profile.name?.trim() || '';
+      const resolvedName = editing
+        ? (serverName && serverName !== 'Merchant' ? serverName : authName || name || 'Merchant')
+        : (pendingName && pendingName !== 'Merchant' ? pendingName : authName || (serverName !== 'Merchant' ? serverName : '') || 'Merchant');
+
+      setName(resolvedName);
+      setIdentifier(storedPending?.identifier || storedUser?.identifier || authResult.data.user?.email || '');
+      if (profile.business && profile.business !== 'My business') setBusiness(profile.business);
+      if (profile.category) setOffer(profile.category);
+      if (profile.description) setDescription(profile.description);
+    }).catch(error => console.error('Failed to load profile setup:', error));
+  }, []);
+
+  const finish = async () => {
+    if (!business.trim() || saving) return;
+    if (!supabase) {
+      window.alert('Supabase is not configured.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate('/login');
+        return;
+      }
+
+      const finalName = name.trim() || 'Merchant';
+
+      const profile = await api.profile.update({
+        name: finalName,
+        business: business.trim(),
+        category: offer,
+        description: description.trim(),
+      });
+
+      await supabase.auth.updateUser({
+        data: { full_name: finalName },
+      });
+
+      write('mp-user', {
+        ...profile,
+        identifier,
+        isNew: false,
+      });
+      write('mp-pending-user', null);
+      navigate('/');
+    } catch (error) {
+      console.error('Profile setup failed:', error);
+      window.alert(error instanceof ApiError ? error.message : 'Could not save your business details.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <PublicFrame title={editing ? 'Business details' : 'Business setup'} back={editing ? '/profile' : '/signup'}><div className="setup-page"><div className="stepper"><span className="step-active">1</span><i /><span>2</span><i /><span>3</span></div><span className="eyebrow">A little about your business</span><h1>{editing ? 'Update your details.' : 'Let’s get you set up.'}</h1><p className="muted">This helps MerchantPal give you more useful summaries. You can change it later.</p><div className="form-stack"><label>Full name<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ayomide David" required data-testid="input-full-name" /></label><label>Business name<input value={business} onChange={e => setBusiness(e.target.value)} placeholder="e.g. My Superstore" required data-testid="input-business-name" /></label><label>What do you offer?<select value={offer} onChange={e => setOffer(e.target.value)}><option value="food">Food and drinks</option><option value="retail">Retail products</option><option value="services">Services</option><option value="other">Something else</option></select></label><label>Tell us a little more <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What do you offer, and what would you like MerchantPal to help you track?" rows={4} /></label><label>Currency<select defaultValue="ngn"><option value="ngn">Nigerian Naira (₦)</option><option value="usd">US Dollar ($)</option></select></label><Button onClick={finish} className="full-width" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Finish setup'} {!saving && <ArrowRight size={17} />}</Button></div></div></PublicFrame>;
 }
 
 function StatCard({ label, value, trend, tone = '' }: { label: string; value: string; trend?: string; tone?: string }) {
   return <div className={`stat-card ${tone}`}><span className="label muted">{label}</span><strong>{value}</strong>{trend && <span className="stat-trend"><TrendingUp size={14} />{trend}</span>}</div>;
 }
-
+const EMPTY_USER: MockUser = {
+  name: 'Merchant',
+  business: '',
+  identifier: '',
+};
 function Dashboard() {
-  const user = getCurrentUser();
-  const fresh = Boolean(user.isNew);
-
+  const [user, setUser] = useState<MockUser>(() => getCurrentUser() ?? EMPTY_USER);
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<{
@@ -182,6 +409,8 @@ function Dashboard() {
 
     async function loadDashboard() {
       try {
+        const currentUser = await syncCurrentUser();
+        if (!cancelled) setUser(currentUser);
         const [apiProducts, apiTransactions, apiStats] = await Promise.all([
           api.products.list(),
           api.transactions.list(),
@@ -204,8 +433,8 @@ function Dashboard() {
         console.error('Failed to load dashboard:', error);
 
         if (!cancelled) {
-          setProducts(read<Product[]>('mp-products', initialProducts));
-          setTransactions(initialTransactions);
+       setProducts([]);
+setTransactions([]);
         }
       }
     }
@@ -226,18 +455,18 @@ function Dashboard() {
   const netProfit = stats ? naira(money(stats.net_cash_flow)) : '₦0';
   const inventoryValue = stats ? naira(money(stats.inventory_value)) : '₦0';
 
-  return <Shell><AppHeader /><main className="screen-content fade-in"><div className="greeting"><span className="eyebrow">Tuesday, 24 June 2025</span><h1>Good morning, {user.name}</h1><p>Here’s how your business is doing today.</p></div>
+  return <Shell><AppHeader /><main className="screen-content fade-in"><div className="greeting"><span className="eyebrow">{new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long' })}</span><h1>Good morning, {user?.name || 'there'}</h1><p>Here’s how your business is doing today.</p></div>
     <Link href="/assistant/voice" className="talk-card pressable" data-testid="link-talk-assistant"><div className="talk-icon"><Sparkles size={23} /></div><div><span className="label">YOUR BUSINESS COMPANION</span><h2>Talk to MerchantPal</h2><p>Tell me what happened today.</p></div><ArrowRight size={20} /></Link>
 
     <section className="section-block"><div className="section-heading"><h2>Today at a glance</h2><Link href="/analytics">See analytics</Link></div><div className="stats-grid">
-      <StatCard label="TODAY'S SALES" value={fresh ? '₦0' : todaySales} />
-      <StatCard label="TODAY'S PROFIT" value={fresh ? '₦0' : todayProfit} tone="mint" />
+      <StatCard label="TODAY'S SALES" value={todaySales} />
+      <StatCard label="TODAY'S PROFIT" value={todayProfit} tone="mint" />
     </div></section>
 
     <section className="section-block"><div className="section-heading"><h2>Business health</h2><Link href="/insights">View insights</Link></div><div className="health-grid">
-      <Link href="/analytics" className="health-card"><span className="health-icon expense"><DollarSign size={15} /></span><span className="label muted">EXPENSES</span><strong>{fresh ? '₦0' : expenses}</strong><small>this week</small></Link>
-      <Link href="/analytics" className="health-card"><span className="health-icon profit"><TrendingUp size={15} /></span><span className="label muted">NET PROFIT</span><strong>{fresh ? '₦0' : netProfit}</strong><small>this week</small></Link>
-      <Link href="/insights" className="health-card health-insight"><span className="health-icon insight"><Lightbulb size={15} /></span><span className="label muted">INSIGHT</span><strong>{fresh ? 'Start tracking' : 'See your business insights'}</strong><small>tap to learn more</small></Link>
+      <Link href="/analytics" className="health-card"><span className="health-icon expense"><DollarSign size={15} /></span><span className="label muted">EXPENSES</span><strong>{expenses}</strong><small>this week</small></Link>
+      <Link href="/analytics" className="health-card"><span className="health-icon profit"><TrendingUp size={15} /></span><span className="label muted">NET PROFIT</span><strong>{netProfit}</strong><small>this week</small></Link>
+      <Link href="/insights" className="health-card health-insight"><span className="health-icon insight"><Lightbulb size={15} /></span><span className="label muted">INSIGHT</span><strong>See your business insights</strong><small>tap to learn more</small></Link>
     </div></section>
 
     <section className="section-block"><div className="section-heading"><h2>Inventory</h2><Link href="/inventory">View all</Link></div><div className="stock-card"><div className="stock-header"><div className="stock-symbol"><Package size={18} /></div><div><strong>{products.length} products</strong><p>{inventoryValue} total value</p></div>{lowStockProducts.length > 0 && <span className="stock-warning">{lowStockProducts.length} low stock</span>}</div>{featuredProducts.length ? featuredProducts.map(product => <Link href={`/inventory/${product.id}`} className="stock-row" key={product.id}><span>{product.name}</span><div className={`progress ${isLowStock(product.stock) ? 'warning' : ''}`}><i style={{ width: `${Math.min(product.stock / 36 * 100, 100)}%` }} /></div><b className={isLowStock(product.stock) ? 'warn-text' : ''}>{product.stock}</b>{isLowStock(product.stock) && <span className="stock-row-badge">Low</span>}</Link>) : <p className="empty-stock">No products added yet.</p>}</div></section>
@@ -253,7 +482,6 @@ function Dashboard() {
     </section>
   </main></Shell>;
 }
-
 function Assistant() {
   const user = getCurrentUser();
 
@@ -262,7 +490,7 @@ function Assistant() {
   >([
     {
       from: 'bot',
-      text: `Hi ${user.name.split(' ')[0]}. Tell me about a sale, an expense, or anything on your mind.`,
+      text: `Hi ${(user?.name || 'there').split(' ')[0]}. Tell me about a sale, an expense, or anything on your mind.`,
     },
   ]);
 
@@ -399,13 +627,203 @@ function Assistant() {
 }
 
 function VoiceRecording() {
-  const [, navigate] = useLocation(); const [recording, setRecording] = useState(true); const bars = [22, 35, 52, 30, 67, 42, 76, 43, 58, 29, 51, 38, 70, 31, 48, 24, 59, 36, 45, 28];
-  return <Shell><AppHeader title="Talk to MerchantPal" back="/assistant" /><main className="voice-page"><div className="voice-copy"><span className="eyebrow">VOICE NOTE</span><h1>{recording ? 'I’m listening.' : 'Ready when you are.'}</h1><p>{recording ? 'Tell me what happened in your business today.' : 'Tap the microphone to start again.'}</p></div><div className={`waveform ${recording ? 'recording' : ''}`}>{bars.map((height, i) => <i key={i} style={{ height: `${recording ? height : 8}px`, animationDelay: `${i * 40}ms` }} />)}</div><div className="voice-timer">{recording ? '00:18' : '00:00'}</div><button className={`record-button ${recording ? 'record-pulse' : ''}`} onClick={() => setRecording(!recording)} aria-label={recording ? 'stop recording' : 'start recording'}><span>{recording ? <div className="stop-square" /> : <Mic size={32} />}</span></button><div className="voice-actions"><Button variant="ghost" onClick={() => navigate('/assistant')}>Cancel</Button>{recording ? <Button onClick={() => navigate('/assistant/clarify')}>Stop & review</Button> : null}</div></main></Shell>;
+  const [, navigate] = useLocation();
+  const [recording, setRecording] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [supported, setSupported] = useState(true);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef('');
+
+  useEffect(() => {
+    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Recognition) {
+      setSupported(false);
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-NG';
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalTranscriptRef.current += ` ${text}`;
+        else interim += ` ${text}`;
+      }
+      setTranscript(`${finalTranscriptRef.current} ${interim}`.trim());
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition failed:', event.error);
+      setRecording(false);
+    };
+
+    recognition.onend = () => {
+      setRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      try { recognition.stop(); } catch { /* already stopped */ }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!recording || !startedAt) return;
+    const timer = window.setInterval(() => setElapsed(Date.now() - startedAt), 250);
+    return () => window.clearInterval(timer);
+  }, [recording, startedAt]);
+
+  const start = () => {
+    if (!supported) return;
+    finalTranscriptRef.current = '';
+    setTranscript('');
+    setElapsed(0);
+    setStartedAt(Date.now());
+    setRecording(true);
+    try {
+      recognitionRef.current?.start();
+    } catch (error) {
+      console.error('Could not start speech recognition:', error);
+    }
+  };
+
+  const stop = () => {
+    try { recognitionRef.current?.stop(); } catch { /* already stopped */ }
+    setRecording(false);
+  };
+
+  const review = () => {
+    stop();
+    const value = transcript.trim();
+    if (!value) {
+      window.alert('I did not catch any words. Try recording again or enter the note manually on the review screen.');
+    }
+    write('mp-voice-transcript', value);
+    navigate('/assistant/clarify');
+  };
+
+  const seconds = Math.floor(elapsed / 1000);
+  const timerText = `00:${String(seconds % 60).padStart(2, '0')}`;
+
+  const bars = [22, 35, 52, 30, 67, 42, 76, 43, 58, 29, 51, 38, 70, 31, 48, 24, 59, 36, 45, 28];
+
+  return <Shell><AppHeader title="Talk to MerchantPal" back="/assistant" /><main className="voice-page"><div className="voice-copy"><span className="eyebrow">VOICE NOTE</span><h1>{recording ? 'I’m listening.' : 'Ready when you are.'}</h1><p>{supported ? (recording ? 'Tell me what happened in your business today.' : 'Tap the microphone to start.') : 'Voice transcription is not supported in this browser. You can still enter the note manually.'}</p></div><div className={`waveform ${recording ? 'recording' : ''}`}>{bars.map((height, i) => <i key={i} style={{ height: `${recording ? height : 8}px`, animationDelay: `${i * 40}ms` }} />)}</div><div className="voice-timer">{timerText}</div><button className={`record-button ${recording ? 'record-pulse' : ''}`} onClick={recording ? stop : start} aria-label={recording ? 'stop recording' : 'start recording'} disabled={!supported}><span>{recording ? <div className="stop-square" /> : <Mic size={32} />}</span></button>{transcript && <p className="muted" style={{ maxWidth: 520, textAlign: 'center' }}>{transcript}</p>}<div className="voice-actions"><Button variant="ghost" onClick={() => navigate('/assistant')}>Cancel</Button><Button onClick={supported ? review : () => { write('mp-voice-transcript', ''); navigate('/assistant/clarify'); }}>Review note <ArrowRight size={17} /></Button></div></main></Shell>;
 }
 
 function Clarify() {
-  const [, navigate] = useLocation(); const [choice, setChoice] = useState('sale');
-  return <Shell><AppHeader title="Review note" back="/assistant/voice" /><main className="screen-content clarify-page"><span className="eyebrow">VOICE NOTE</span><h1>Your note is saved locally.</h1><div className="clarify-note"><Sparkles size={17} /><span>AI transcription and sale details will appear here once the AI service is connected.</span></div><div className="clarify-card surface-card"><div className="sale-draft-head"><span className="icon-tile mint"><Mic size={17} /></span><div><span className="label muted">AI HANDOFF</span><strong>No sale drafted</strong></div><span className="sale-status">Waiting</span></div><p className="draft-placeholder">MerchantPal does not guess what you said or record a sale without a transcript to review.</p></div><Button className="full-width" onClick={() => navigate('/assistant')}>Back to assistant <ArrowRight size={17} /></Button></main></Shell>;
+  const [, navigate] = useLocation();
+  const [transcript, setTranscript] = useState(read<string>('mp-voice-transcript', ''));
+  const [draft, setDraft] = useState<{
+    type: 'sale' | 'purchase' | 'expense';
+    item: string;
+    quantity: number;
+    total: string | number;
+    counterparty: string;
+    status: 'paid' | 'pending';
+    product_id?: string | null;
+    source_transcript?: string | null;
+  } | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(Boolean(transcript));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    api.products.list().then(items => setProducts(items.map(productFromApi))).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!transcript.trim()) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+
+    api.assistantInterpret(transcript.trim())
+      .then(response => {
+        if (cancelled) return;
+        setDraft({
+          ...response.draft,
+          source_transcript: response.draft.source_transcript || response.transcript,
+        });
+
+        const exact = products.find(product => product.name.toLowerCase() === response.draft.item.toLowerCase());
+        if (exact && !response.draft.product_id) {
+          setDraft(current => current ? { ...current, product_id: exact.id, item: exact.name } : current);
+        }
+      })
+      .catch(error => {
+        console.error('Voice interpretation failed:', error);
+        if (!cancelled) setError(error instanceof ApiError ? error.message : 'MerchantPal could not understand the note.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [transcript, retry]);
+
+  const updateDraft = (field: string, value: string | number) => {
+    setDraft(current => current ? { ...current, [field]: value } : current);
+  };
+
+  const confirm = async () => {
+    if (!draft || saving) return;
+    if (!draft.item.trim() || Number(draft.total) <= 0 || Number(draft.quantity) <= 0) {
+      window.alert('Please check the item, quantity, and total before recording it.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const created = await api.transactions.create({
+        type: draft.type,
+        item: draft.item.trim(),
+        quantity: Number(draft.quantity),
+        total: Number(draft.total),
+        counterparty: draft.counterparty.trim() || (draft.type === 'sale' ? 'Walk-in customer' : 'Unknown'),
+        status: draft.status,
+        product_id: draft.product_id || null,
+        source_transcript: transcript.trim() || undefined,
+      });
+
+      const product = products.find(item => item.id === draft.product_id);
+      const profit = draft.type === 'sale' && product
+        ? (product.price - product.cost) * Number(draft.quantity)
+        : 0;
+
+      sessionStorage.setItem('mp-last-confirmation', JSON.stringify({
+        type: draft.type,
+        item: draft.item,
+        quantity: Number(draft.quantity),
+        total: Number(draft.total),
+        profit,
+        transactionId: created.id,
+      }));
+
+      write('mp-voice-transcript', null);
+      navigate(`/transactions/${created.id}/confirm`);
+    } catch (error) {
+      console.error('Transaction creation failed:', error);
+      window.alert(error instanceof ApiError ? error.message : 'Could not record this transaction.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <Shell><AppHeader title="Review note" back="/assistant/voice" /><main className="screen-content clarify-page"><span className="eyebrow">VOICE NOTE</span><h1>Review before recording.</h1><div className="clarify-note"><Sparkles size={17} /><span>MerchantPal interpreted your note. Check the details before anything is saved.</span></div><div className="clarify-card surface-card">{loading ? <p className="muted">Understanding your note…</p> : error ? <><p className="draft-placeholder">{error}</p><Button onClick={() => setRetry(value => value + 1)}>Try again <ArrowRight size={17} /></Button></> : <>{!transcript && <label>What happened?<textarea value={transcript} onChange={e => setTranscript(e.target.value)} placeholder="e.g. Sold two plates of jollof rice to Kunle for ₦12,000." rows={4} /></label>}{draft && <div className="form-stack"><label>Type<select value={draft.type} onChange={e => updateDraft('type', e.target.value)}><option value="sale">Sale</option><option value="purchase">Purchase</option><option value="expense">Expense</option></select></label><label>Item<input value={draft.item} onChange={e => updateDraft('item', e.target.value)} /></label><label>Quantity<input type="number" min="1" value={draft.quantity} onChange={e => updateDraft('quantity', Number(e.target.value))} /></label><label>Total<input type="number" min="0" value={draft.total} onChange={e => updateDraft('total', Number(e.target.value))} /></label><label>{draft.type === 'sale' ? 'Customer' : draft.type === 'purchase' ? 'Supplier' : 'Payee'}<input value={draft.counterparty} onChange={e => updateDraft('counterparty', e.target.value)} /></label><label>Payment status<select value={draft.status} onChange={e => updateDraft('status', e.target.value)}><option value="paid">Paid</option><option value="pending">Pending</option></select></label><label>Inventory product (optional)<select value={draft.product_id || ''} onChange={e => { const value = e.target.value; const product = products.find(item => item.id === value); setDraft(current => current ? { ...current, product_id: value || null, item: product ? product.name : current.item } : current); }}><option value="">No linked product</option>{products.map(product => <option key={product.id} value={product.id}>{product.name} · {product.stock} {product.unit}s</option>)}</select></label></div>}</>}</div>{draft && <Button className="full-width" onClick={confirm} disabled={saving}>{saving ? 'Recording…' : 'Confirm & record'} {!saving && <Check size={17} />}</Button>}{!draft && !loading && <Button className="full-width" onClick={() => navigate('/assistant')}>Back to assistant <ArrowRight size={17} /></Button>}</main></Shell>;
 }
 
 function Inventory() {
@@ -429,7 +847,7 @@ function Inventory() {
         console.error('Failed to load inventory:', error);
 
         if (!cancelled) {
-          setProducts(read<Product[]>('mp-products', initialProducts));
+          setProducts([]);
         }
       } finally {
         if (!cancelled) {
@@ -643,16 +1061,16 @@ function AddProduct() {
     async function loadProduct() {
       try {
         const products = await api.products.list();
-        const existing = products.find(product => product.id === params.id);
+        const found = products.find(product => product.id === params.id);
 
-        if (existing) {
+        if (found) {
           setForm({
-            name: existing.name,
-            category: existing.category,
-            price: String(money(existing.price)),
-            cost: String(money(existing.cost)),
-            stock: String(existing.stock),
-            unit: existing.unit,
+            name: found.name,
+            category: found.category,
+            price: String(found.price),
+            cost: String(found.cost),
+            stock: String(found.stock),
+            unit: found.unit,
           });
         }
       } catch (error) {
@@ -855,15 +1273,6 @@ function ProductDetails() {
         }
       } catch (error) {
         console.error('Failed to load product:', error);
-
-        const localProduct = read<Product[]>(
-          'mp-products',
-          initialProducts
-        ).find(product => product.id === id);
-
-        if (localProduct) {
-          setProduct(localProduct);
-        }
       } finally {
         setLoading(false);
       }
@@ -1050,7 +1459,7 @@ function Transactions() {
         console.error('Failed to load transactions:', error);
 
         if (!cancelled) {
-          setTransactions(initialTransactions);
+          setTransactions([]);
         }
       } finally {
         if (!cancelled) {
@@ -1215,10 +1624,7 @@ function TransactionDetails() {
 
     async function loadTransaction() {
       try {
-        const apiTransactions = await api.transactions.list();
-        const found = apiTransactions.find(
-          transaction => transaction.id === id
-        );
+        const found = await api.transactions.get(id);
 
         if (found) {
           setTransaction(transactionFromApi(found));
@@ -1226,13 +1632,6 @@ function TransactionDetails() {
       } catch (error) {
         console.error('Failed to load transaction:', error);
 
-        const localTransaction = initialTransactions.find(
-          transaction => transaction.id === id
-        );
-
-        if (localTransaction) {
-          setTransaction(localTransaction);
-        }
       } finally {
         setLoading(false);
       }
@@ -1342,7 +1741,35 @@ function TransactionDetails() {
     </Shell>
   );
 }
-function TransactionConfirmation() { const [, navigate] = useLocation(); return <Shell><main className="confirmation-page"><div className="confirm-check"><Check size={38} /></div><span className="eyebrow">ALL DONE</span><h1>Sale recorded.</h1><p>Your numbers are up to date and your inventory has been adjusted.</p><div className="confirm-summary surface-card"><div><span className="label muted">TOTAL SALE</span><strong>₦12,000</strong></div><div className="confirm-summary-row"><span>Jollof Rice + Chicken</span><b>2 items</b></div><div className="confirm-summary-row"><span>Estimated profit</span><b className="paid-text">₦4,300</b></div></div><Button onClick={() => navigate('/')} className="full-width">Back to home <ArrowRight size={17} /></Button><Button variant="ghost" onClick={() => navigate('/transactions')} className="full-width">See all transactions</Button></main></Shell>; }
+function TransactionConfirmation() {
+  const [, navigate] = useLocation();
+  const { id } = useParams<{ id: string }>();
+  const [transaction, setTransaction] = useState<ApiTransaction | null>(null);
+  const [loading, setLoading] = useState(true);
+  const saved = useMemo(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('mp-last-confirmation') || 'null') as { type?: string; profit?: number } | null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    api.transactions.get(id)
+      .then(setTransaction)
+      .catch(error => console.error('Could not load recorded transaction:', error))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const type = transaction?.type || saved?.type || 'sale';
+  const title = type === 'purchase' ? 'Purchase recorded.' : type === 'expense' ? 'Expense recorded.' : 'Sale recorded.';
+  const total = transaction ? money(transaction.total) : 0;
+  const quantity = transaction?.quantity || 0;
+  const item = transaction?.item || 'Transaction';
+
+  return <Shell><main className="confirmation-page"><div className="confirm-check"><Check size={38} /></div><span className="eyebrow">ALL DONE</span><h1>{loading ? 'Saving your numbers.' : title}</h1><p>{type === 'sale' ? 'Your numbers are up to date and your inventory has been adjusted when a product was linked.' : 'Your transaction is now in your business records.'}</p><div className="confirm-summary surface-card"><div><span className="label muted">TOTAL</span><strong>{naira(total)}</strong></div><div className="confirm-summary-row"><span>{item}</span><b>{quantity} item{quantity === 1 ? '' : 's'}</b></div>{type === 'sale' && <div className="confirm-summary-row"><span>Estimated profit</span><b className="paid-text">{naira(saved?.profit || 0)}</b></div>}</div><Button onClick={() => navigate('/')} className="full-width">Back to home <ArrowRight size={17} /></Button><Button variant="ghost" onClick={() => navigate('/transactions')} className="full-width">See all transactions</Button></main></Shell>;
+}
 
 function Analytics() {
   const [analytics, setAnalytics] = useState<{
@@ -1533,19 +1960,79 @@ function Analytics() {
     </Shell>
   );
 }
-function Insights() { return <Shell><AppHeader title="Business insights" back="/analytics" /><main className="screen-content"><span className="eyebrow">A CLOSER LOOK</span><h1>Worth knowing.</h1><p className="muted">A few patterns MerchantPal spotted in your recent activity.</p><div className="insight-list"><div className="insight-card surface-card"><div className="insight-number">01</div><Lightbulb size={19} /><h2>Friday is your strongest day</h2><p>Weekly sales are 32% higher on Fridays. Your customers seem to arrive ready for a full meal.</p><Link href="/inventory">Check your stock <ArrowRight size={15} /></Link></div><div className="insight-card surface-card"><div className="insight-number">02</div><TrendingUp size={19} /><h2>Drinks bring a healthy margin</h2><p>Chapman and bottled water account for 24% of sales but 36% of your profit.</p><Link href="/inventory">View products <ArrowRight size={15} /></Link></div><div className="insight-card surface-card"><div className="insight-number">03</div><Zap size={19} /><h2>One reorder could help</h2><p>Grilled Chicken is moving quickly. You may run out before your next busy day.</p><Link href="/inventory/p2">See grilled chicken <ArrowRight size={15} /></Link></div></div></main></Shell>; }
+function Insights() {
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
-function Notifications() {
-  const [readAll, setReadAll] = useState(false); const notes = [{ icon: TrendingUp, title: 'A good sales day', body: 'Today’s sales are 12.4% above your usual Tuesday.', time: '2 hours ago', tone: 'mint' }, { icon: Package, title: 'Stock is running low', body: 'Grilled Chicken has 7 pieces left.', time: '4 hours ago', tone: 'amber' }, { icon: Sparkles, title: 'New insight ready', body: 'MerchantPal found 3 patterns in your numbers.', time: 'Yesterday', tone: 'blue' }];
-  return <Shell><AppHeader title="Notifications" back="/" /><main className="screen-content"><div className="page-heading"><div><span className="eyebrow">KEEPING YOU IN THE LOOP</span><h1>Notifications</h1></div><Button variant="ghost" onClick={() => setReadAll(true)}>Mark all read</Button></div><div className="notification-list">{notes.map((note, i) => { const Icon = note.icon; return <div className={`notification-item ${i === 0 && !readAll ? 'unread' : ''}`} key={note.title}><span className={`notification-icon ${note.tone}`}><Icon size={18} /></span><div><b>{note.title}</b><p>{note.body}</p><small>{note.time}</small></div>{i === 0 && !readAll && <i className="unread-dot" />}</div>; })}</div></main></Shell>;
+  useEffect(() => {
+    Promise.all([api.analytics(), api.products.list()])
+      .then(([data, apiProducts]) => {
+        setAnalytics(data);
+        setProducts(apiProducts.map(productFromApi));
+      })
+      .catch(error => console.error('Failed to load insights:', error))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const lowStock = products.filter(product => isLowStock(product.stock)).sort((a, b) => a.stock - b.stock);
+  const days = analytics?.daily_sales || [];
+  const strongest = days.length ? [...days].sort((a, b) => money(b.amount) - money(a.amount))[0] : null;
+
+  return <Shell><AppHeader title="Business insights" back="/analytics" /><main className="screen-content"><span className="eyebrow">A CLOSER LOOK</span><h1>Worth knowing.</h1><p className="muted">{loading ? 'Looking at your recent activity…' : 'Patterns from your actual MerchantPal data.'}</p>{loading ? <p className="muted">Loading insights…</p> : <div className="insight-list">{strongest && <div className="insight-card surface-card"><div className="insight-number">01</div><TrendingUp size={19} /><h2>Your strongest sales day</h2><p>{new Date(strongest.date).toLocaleDateString('en-NG', { weekday: 'long' })} recorded {naira(money(strongest.amount))} in sales.</p><Link href="/analytics">See analytics <ArrowRight size={15} /></Link></div>}{lowStock.length > 0 && <div className="insight-card surface-card"><div className="insight-number">02</div><Zap size={19} /><h2>Stock needs attention</h2><p>{lowStock.slice(0, 3).map(product => `${product.name} (${product.stock} left)`).join(', ')} {lowStock.length > 3 ? `and ${lowStock.length - 3} more` : ''} are below the restock threshold.</p><Link href="/inventory">Check your stock <ArrowRight size={15} /></Link></div>}<div className="insight-card surface-card"><div className="insight-number">{strongest && lowStock.length > 0 ? '03' : '02'}</div><Lightbulb size={19} /><h2>Keep recording transactions</h2><p>MerchantPal can only identify reliable business patterns from transactions actually recorded in your account.</p><Link href="/assistant/voice">Record a transaction <ArrowRight size={15} /></Link></div></div>}</main></Shell>;
 }
 
+function Notifications() {
+  const [notes, setNotes] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [readAll, setReadAll] = useState(false);
+
+  useEffect(() => {
+    api.notifications()
+      .then(setNotes)
+      .catch(error => console.error('Failed to load notifications:', error))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return <Shell><AppHeader title="Notifications" back="/" /><main className="screen-content"><div className="page-heading"><div><span className="eyebrow">KEEPING YOU IN THE LOOP</span><h1>Notifications</h1></div>{notes.length > 0 && <Button variant="ghost" onClick={() => setReadAll(true)}>Mark all read</Button>}</div>{loading ? <p className="muted">Loading notifications…</p> : notes.length === 0 ? <div className="empty-state surface-card"><div className="empty-illustration"><Bell size={32} /></div><h2>Nothing needs your attention.</h2><p>MerchantPal will show stock alerts here when your inventory gets low.</p></div> : <div className="notification-list">{notes.map((note, i) => { const Icon = note.kind === 'low_stock' ? Package : Bell; return <div className={`notification-item ${i === 0 && !readAll ? 'unread' : ''}`} key={note.id}><span className="notification-icon amber"><Icon size={18} /></span><div><b>{note.title}</b><p>{note.body}</p><small>{new Date(note.created_at).toLocaleString('en-NG')}</small></div>{i === 0 && !readAll && <i className="unread-dot" />}</div>; })}</div>}</main></Shell>;
+}
 function Profile() {
-  const [, navigate] = useLocation(); const [business, setBusiness] = useState(getCurrentUser()); const [offlineOnly, setOfflineOnly] = useState(true); const [installEvent, setInstallEvent] = useState<any>(null);
-  useEffect(() => { const onInstall = (event: Event) => { event.preventDefault(); setInstallEvent(event); }; window.addEventListener('beforeinstallprompt', onInstall); return () => window.removeEventListener('beforeinstallprompt', onInstall); }, []);
-  const install = async () => { if (!installEvent) return; await installEvent.prompt(); setInstallEvent(null); };
-  return <Shell><AppHeader /><main className="screen-content profile-page"><div className="profile-head"><div className="avatar">AY</div><div><span className="eyebrow">YOUR ACCOUNT</span><h1>{business.name}</h1><p>{business.business}</p></div><IconButton label="edit-profile" onClick={() => setBusiness({ ...business, business: business.business === 'Amina’s Kitchen' ? 'Amina’s Kitchen & More' : 'Amina’s Kitchen' })}><Edit3 size={17} /></IconButton></div><div className="profile-section"><span className="label muted">BUSINESS</span><div className="settings-list"><Link href="/setup" className="settings-row"><span className="setting-icon mint"><ShoppingBag size={18} /></span><span><b>Business details</b><small>Update your business information</small></span><ChevronRight size={18} /></Link><Link href="/analytics" className="settings-row"><span className="setting-icon blue"><BarChart3 size={18} /></span><span><b>Profit analytics</b><small>See how your business is doing</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">PREFERENCES</span><div className="settings-list"><div className="settings-row"><span className="setting-icon amber"><WifiOff size={18} /></span><span><b>Offline-first mode</b><small>Keep working without internet</small></span><button className={`toggle ${offlineOnly ? 'on' : ''}`} onClick={() => setOfflineOnly(!offlineOnly)} aria-label="toggle offline mode"><i /></button></div><Link href="/notifications" className="settings-row"><span className="setting-icon rose"><Bell size={18} /></span><span><b>Notifications</b><small>Stock alerts and business updates</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">SUPPORT</span><div className="settings-list"><button className="settings-row"><span className="setting-icon blue"><CircleHelp size={18} /></span><span><b>Help & feedback</b><small>We’re here when you need us</small></span><ChevronRight size={18} /></button><button className="settings-row logout" onClick={() => navigate('/welcome')}><span className="setting-icon rose"><LogOut size={18} /></span><span><b>Log out</b><small>Come back soon</small></span><ChevronRight size={18} /></button></div></div><p className="profile-version">MerchantPal v1.0.0 · Made for small businesses</p></main></Shell>;
-  return <Shell><AppHeader /><main className="screen-content profile-page"><div className="profile-head"><div className="avatar">AY</div><div><span className="eyebrow">YOUR ACCOUNT</span><h1>{business.name}</h1><p>{business.business}</p></div><IconButton label="edit-profile" onClick={() => setBusiness({ ...business, business: business.business === 'Amina’s Kitchen' ? 'Amina’s Kitchen & More' : 'Amina’s Kitchen' })}><Edit3 size={17} /></IconButton></div><div className="profile-section"><span className="label muted">BUSINESS</span><div className="settings-list"><Link href="/setup" className="settings-row"><span className="setting-icon mint"><ShoppingBag size={18} /></span><span><b>Business details</b><small>Update your business information</small></span><ChevronRight size={18} /></Link><Link href="/analytics" className="settings-row"><span className="setting-icon blue"><BarChart3 size={18} /></span><span><b>Profit analytics</b><small>See how your business is doing</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">PREFERENCES</span><div className="settings-list">{installEvent && <button className="settings-row" onClick={install}><span className="setting-icon mint"><Download size={18} /></span><span><b>Install MerchantPal</b><small>Add it to your home screen</small></span><ChevronRight size={18} /></button>}<div className="settings-row"><span className="setting-icon amber"><WifiOff size={18} /></span><span><b>Offline-first mode</b><small>Keep working without internet</small></span><button className={`toggle ${offlineOnly ? 'on' : ''}`} onClick={() => setOfflineOnly(!offlineOnly)} aria-label="toggle offline mode"><i /></button></div><Link href="/notifications" className="settings-row"><span className="setting-icon rose"><Bell size={18} /></span><span><b>Notifications</b><small>Stock alerts and business updates</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">SUPPORT</span><div className="settings-list"><button className="settings-row" onClick={() => window.alert('Help is available offline. Tell us what you need when you are next connected.')}><span className="setting-icon blue"><CircleHelp size={18} /></span><span><b>Help & feedback</b><small>We’re here when you need us</small></span><ChevronRight size={18} /></button><button className="settings-row logout" onClick={() => navigate('/welcome')}><span className="setting-icon rose"><LogOut size={18} /></span><span><b>Log out</b><small>Come back soon</small></span><ChevronRight size={18} /></button></div></div><p className="profile-version">MerchantPal v1.0.0 · Made for small businesses</p></main></Shell>;
+  const [, navigate] = useLocation();
+ const [business, setBusiness] = useState<MockUser>(
+  () => getCurrentUser() ?? EMPTY_USER
+);
+  const [offlineOnly, setOfflineOnly] = useState(true);
+  const [installEvent, setInstallEvent] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const onInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallEvent(event);
+    };
+    window.addEventListener('beforeinstallprompt', onInstall);
+
+    syncCurrentUser()
+      .then(current => setBusiness(current))
+      .catch(error => console.error('Failed to load profile:', error))
+      .finally(() => setLoading(false));
+
+    return () => window.removeEventListener('beforeinstallprompt', onInstall);
+  }, []);
+
+  const install = async () => {
+    if (!installEvent) return;
+    await installEvent.prompt();
+    setInstallEvent(null);
+  };
+
+  const logout = async () => {
+    if (supabase) await supabase.auth.signOut();
+    write('mp-user', null);
+    navigate('/welcome');
+  };
+
+  return <Shell><AppHeader /><main className="screen-content profile-page"><div className="profile-head"><div className="avatar">{initials(business.name || 'Merchant')}</div><div><span className="eyebrow">YOUR ACCOUNT</span><h1>{loading ? 'Loading…' : business.name}</h1><p>{business.business}</p></div><IconButton label="edit-profile" onClick={() => navigate('/setup')}><Edit3 size={17} /></IconButton></div><div className="profile-section"><span className="label muted">BUSINESS</span><div className="settings-list"><Link href="/setup" className="settings-row"><span className="setting-icon mint"><ShoppingBag size={18} /></span><span><b>Business details</b><small>Update your business information</small></span><ChevronRight size={18} /></Link><Link href="/analytics" className="settings-row"><span className="setting-icon blue"><BarChart3 size={18} /></span><span><b>Profit analytics</b><small>See how your business is doing</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">PREFERENCES</span><div className="settings-list">{installEvent && <button className="settings-row" onClick={install}><span className="setting-icon mint"><Download size={18} /></span><span><b>Install MerchantPal</b><small>Add it to your home screen</small></span><ChevronRight size={18} /></button>}<div className="settings-row"><span className="setting-icon amber"><WifiOff size={18} /></span><span><b>Offline-first mode</b><small>Keep working without internet</small></span><button className={`toggle ${offlineOnly ? 'on' : ''}`} onClick={() => setOfflineOnly(!offlineOnly)} aria-label="toggle offline mode"><i /></button></div><Link href="/notifications" className="settings-row"><span className="setting-icon rose"><Bell size={18} /></span><span><b>Notifications</b><small>Stock alerts and business updates</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">SUPPORT</span><div className="settings-list"><button className="settings-row" onClick={() => window.alert('For the hackathon build, contact the MerchantPal team directly for support.')}><span className="setting-icon blue"><CircleHelp size={18} /></span><span><b>Help & feedback</b><small>Contact the MerchantPal team</small></span><ChevronRight size={18} /></button><button className="settings-row logout" onClick={logout}><span className="setting-icon rose"><LogOut size={18} /></span><span><b>Log out</b><small>Sign out of this account</small></span><ChevronRight size={18} /></button></div></div><p className="profile-version">MerchantPal v1.0.0 · Made for small businesses</p></main></Shell>;
 }
 
 function Offline() { const [, navigate] = useLocation(); return <PublicFrame><div className="offline-page"><div className="offline-icon"><WifiOff size={32} /></div><span className="eyebrow">NO CONNECTION</span><h1>You’re offline,<br />but still in business.</h1><p>MerchantPal saves your work on this device, so you can keep recording sales and checking stock.</p><div className="offline-points"><span><Check size={16} />Your local data is safe</span><span><Check size={16} />Sales will sync when you’re back</span></div><Button onClick={() => navigate('/')} className="full-width">Continue offline <ArrowRight size={17} /></Button></div></PublicFrame>; }

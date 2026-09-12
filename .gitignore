@@ -44,3 +44,12 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+
+# Local secrets and deployment files
+artifacts/merchantpal/.env
+api-friend.txt
+
+# Local secrets and deployment files
+artifacts/merchantpal/.env
+api-friend.txt
+.vercel/
