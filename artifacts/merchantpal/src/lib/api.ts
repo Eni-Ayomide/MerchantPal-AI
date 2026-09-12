@@ -1,4 +1,6 @@
-﻿const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+﻿const API_URL =
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.PROD ? '' : 'http://localhost:8000');
 import { supabase } from './supabase';
 
 export type ApiProduct = {
@@ -76,6 +78,7 @@ export const api = {
   },
   transactions: {
     list: () => request<ApiTransaction[]>('/transactions'),
+    get: (id: string) => request<ApiTransaction>(`/transactions/${id}`),
     create: (transaction: Omit<ApiTransaction, 'id' | 'created_at'> & { source_transcript?: string }) => request<ApiTransaction>('/transactions', { method: 'POST', body: JSON.stringify(transaction) }),
     remove: (id: string) => request<void>(`/transactions/${id}`, { method: 'DELETE' }),
   },
@@ -97,15 +100,18 @@ export const api = {
 
   assistantInterpret: (transcript: string) =>
     request<{
-      type: 'sale' | 'purchase' | 'expense';
-      item: string;
-      quantity: number;
-      total: string | number;
-      counterparty: string;
-      status: 'paid' | 'pending';
+      transcript: string;
       matched: boolean;
-      source_transcript: string;
-      product_id?: string | null;
+      draft: {
+        type: 'sale' | 'purchase' | 'expense';
+        item: string;
+        quantity: number;
+        total: string | number;
+        counterparty: string;
+        status: 'paid' | 'pending';
+        product_id?: string | null;
+        source_transcript?: string | null;
+      };
     }>('/assistant/interpret', {
       method: 'POST',
       body: JSON.stringify({ transcript }),
