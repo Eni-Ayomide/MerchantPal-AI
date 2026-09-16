@@ -14,7 +14,6 @@ import { supabase } from '@/lib/supabase';
 
 const naira = (amount: number) => `₦${amount.toLocaleString('en-NG')}`;
 const LOW_STOCK_THRESHOLD = 10;
-
 type Product = MockProduct;
 type Transaction = MockTransaction;
 const read = readLocal;
@@ -38,42 +37,12 @@ const transactionFromApi = (transaction: ApiTransaction): Transaction => ({
   status: transaction.status,
   date: new Date(transaction.created_at).toLocaleDateString('en-NG'),
 });
-const getCurrentUser = (): MockUser | null => read<MockUser | null>('mp-user', null);
-
-async function syncCurrentUser(): Promise<MockUser> {
-  if (!supabase) return getCurrentUser() ?? EMPTY_USER;
-
-  const [{ data: authResult }, profile] = await Promise.all([
-    supabase.auth.getUser(),
-    api.profile.get(),
-  ]);
-
-  const authName = authResult.user?.user_metadata?.full_name?.trim() || '';
-  const profileName = profile.name?.trim() || '';
-  const name = profileName && profileName !== 'Merchant'
-    ? profileName
-    : authName || 'Merchant';
-
-  const resolved: MockUser = {
-    ...profile,
-    name,
-    identifier: authResult.user?.email || getCurrentUser()?.identifier || '',
-    isNew: false,
-  };
-
-  if (name !== profileName) {
-    const saved = await api.profile.update({
-      name,
-      business: profile.business,
-      category: profile.category,
-      description: profile.description,
-    });
-    Object.assign(resolved, saved, { name });
-  }
-
-  write('mp-user', resolved);
-  return resolved;
-}
+const getCurrentUser = () => read<MockUser | null>('mp-user', null);
+const EMPTY_USER: MockUser = {
+  name: 'Merchant',
+  business: '',
+  identifier: '',
+};
 const initials = (name: string) => name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
 const isLowStock = (stock: number) => stock < LOW_STOCK_THRESHOLD;
 const stockLabel = (stock: number) => stock === 0 ? 'Out of stock' : isLowStock(stock) ? 'Low stock' : 'Healthy';
@@ -127,9 +96,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     const goOnline = () => setOffline(false);
     window.addEventListener('offline', goOffline);
     window.addEventListener('online', goOnline);
-    if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => undefined);
-}
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
 
     if (supabase) {
       supabase.auth.getSession().then(({ data }) => {
@@ -248,23 +215,8 @@ if (isNewProfile) {
   return;
 }
 
-const resolvedName =
-  profile.name?.trim() && profile.name.trim() !== 'Merchant'
-    ? profile.name.trim()
-    : authName;
-
-const resolvedProfile =
-  resolvedName && resolvedName !== profile.name
-    ? await api.profile.update({
-        name: resolvedName,
-        business: profile.business,
-        category: profile.category,
-        description: profile.description,
-      })
-    : profile;
-
 write('mp-user', {
-  ...resolvedProfile,
+  ...profile,
   identifier: form.identifier.trim(),
   isNew: false,
 });
@@ -272,7 +224,32 @@ write('mp-user', {
 navigate('/');
     } catch (error) {
       console.error('Authentication failed:', error);
-      window.alert(error instanceof Error ? error.message : 'Could not complete authentication.');
+
+      const authError = error as {
+        message?: string;
+        status?: number;
+        code?: string;
+      };
+      const message = authError.message?.toLowerCase() ?? '';
+      const isExistingEmail =
+        signup &&
+        (
+          message.includes('already registered') ||
+          message.includes('already exists') ||
+          message.includes('user already') ||
+          authError.code === 'user_already_exists'
+        );
+      const isRateLimited =
+        signup &&
+        (authError.status === 429 || message.includes('rate limit'));
+
+      if (isExistingEmail) {
+        window.alert('Email already exists. Please log in instead.');
+      } else if (isRateLimited) {
+        window.alert('Too many signup attempts have been made recently. Please try again later.');
+      } else {
+        window.alert(authError.message || 'Could not complete authentication.');
+      }
     } finally {
       setLoading(false);
     }
@@ -303,38 +280,20 @@ navigate('/');
 
 function Setup() {
   const [, navigate] = useLocation();
-  const storedPending = read<MockUser | null>('mp-pending-user', null);
-  const storedUser = getCurrentUser();
-  const editing = !storedPending && !!storedUser;
-  const initialUser = storedPending ?? storedUser ?? EMPTY_USER;
-
-  const [name, setName] = useState(initialUser.name || '');
-  const [business, setBusiness] = useState(initialUser.business || '');
-  const [offer, setOffer] = useState(initialUser.category || 'food');
-  const [description, setDescription] = useState(initialUser.description || '');
-  const [identifier, setIdentifier] = useState(initialUser.identifier || '');
+  const pending = read<MockUser>('mp-pending-user', { name: 'Merchant', business: '', identifier: '' });
+  const [business, setBusiness] = useState(pending.business || '');
+  const [offer, setOffer] = useState('food');
+  const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
-
-    Promise.all([
-      api.profile.get(),
-      supabase.auth.getUser(),
-    ]).then(([profile, authResult]) => {
-      const authName = authResult.data.user?.user_metadata?.full_name?.trim() || '';
-      const pendingName = storedPending?.name?.trim() || '';
-      const serverName = profile.name?.trim() || '';
-      const resolvedName = editing
-        ? (serverName && serverName !== 'Merchant' ? serverName : authName || name || 'Merchant')
-        : (pendingName && pendingName !== 'Merchant' ? pendingName : authName || (serverName !== 'Merchant' ? serverName : '') || 'Merchant');
-
-      setName(resolvedName);
-      setIdentifier(storedPending?.identifier || storedUser?.identifier || authResult.data.user?.email || '');
+    api.profile.get().then(profile => {
+      if (profile.name) write('mp-pending-user', { ...pending, name: profile.name });
       if (profile.business && profile.business !== 'My business') setBusiness(profile.business);
       if (profile.category) setOffer(profile.category);
       if (profile.description) setDescription(profile.description);
-    }).catch(error => console.error('Failed to load profile setup:', error));
+    }).catch(() => undefined);
   }, []);
 
   const finish = async () => {
@@ -352,22 +311,16 @@ function Setup() {
         return;
       }
 
-      const finalName = name.trim() || 'Merchant';
-
       const profile = await api.profile.update({
-        name: finalName,
+        name: pending.name || 'Merchant',
         business: business.trim(),
         category: offer,
         description: description.trim(),
       });
 
-      await supabase.auth.updateUser({
-        data: { full_name: finalName },
-      });
-
       write('mp-user', {
         ...profile,
-        identifier,
+        identifier: pending.identifier,
         isNew: false,
       });
       write('mp-pending-user', null);
@@ -380,19 +333,15 @@ function Setup() {
     }
   };
 
-  return <PublicFrame title={editing ? 'Business details' : 'Business setup'} back={editing ? '/profile' : '/signup'}><div className="setup-page"><div className="stepper"><span className="step-active">1</span><i /><span>2</span><i /><span>3</span></div><span className="eyebrow">A little about your business</span><h1>{editing ? 'Update your details.' : 'Let’s get you set up.'}</h1><p className="muted">This helps MerchantPal give you more useful summaries. You can change it later.</p><div className="form-stack"><label>Full name<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ayomide David" required data-testid="input-full-name" /></label><label>Business name<input value={business} onChange={e => setBusiness(e.target.value)} placeholder="e.g. My Superstore" required data-testid="input-business-name" /></label><label>What do you offer?<select value={offer} onChange={e => setOffer(e.target.value)}><option value="food">Food and drinks</option><option value="retail">Retail products</option><option value="services">Services</option><option value="other">Something else</option></select></label><label>Tell us a little more <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What do you offer, and what would you like MerchantPal to help you track?" rows={4} /></label><label>Currency<select defaultValue="ngn"><option value="ngn">Nigerian Naira (₦)</option><option value="usd">US Dollar ($)</option></select></label><Button onClick={finish} className="full-width" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Finish setup'} {!saving && <ArrowRight size={17} />}</Button></div></div></PublicFrame>;
+  return <PublicFrame title="Business setup" back="/signup"><div className="setup-page"><div className="stepper"><span className="step-active">1</span><i /><span>2</span><i /><span>3</span></div><span className="eyebrow">A little about your business</span><h1>Let’s get you set up.</h1><p className="muted">This helps MerchantPal give you more useful summaries. You can change it later.</p><div className="form-stack"><label>Business name<input value={business} onChange={e => setBusiness(e.target.value)} placeholder="e.g. My Superstore" required data-testid="input-business-name" /></label><label>What do you offer?<select value={offer} onChange={e => setOffer(e.target.value)}><option value="food">Food and drinks</option><option value="retail">Retail products</option><option value="services">Services</option><option value="other">Something else</option></select></label><label>Tell us a little more <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="What do you offer, and what would you like MerchantPal to help you track?" rows={4} /></label><label>Currency<select defaultValue="ngn"><option value="ngn">Nigerian Naira (₦)</option><option value="usd">US Dollar ($)</option></select></label><Button onClick={finish} className="full-width" disabled={saving}>{saving ? 'Saving…' : 'Finish setup'} {!saving && <ArrowRight size={17} />}</Button></div></div></PublicFrame>;
 }
 
 function StatCard({ label, value, trend, tone = '' }: { label: string; value: string; trend?: string; tone?: string }) {
   return <div className={`stat-card ${tone}`}><span className="label muted">{label}</span><strong>{value}</strong>{trend && <span className="stat-trend"><TrendingUp size={14} />{trend}</span>}</div>;
 }
-const EMPTY_USER: MockUser = {
-  name: 'Merchant',
-  business: '',
-  identifier: '',
-};
+
 function Dashboard() {
-  const [user, setUser] = useState<MockUser>(() => getCurrentUser() ?? EMPTY_USER);
+  const user = getCurrentUser();
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<{
@@ -409,8 +358,6 @@ function Dashboard() {
 
     async function loadDashboard() {
       try {
-        const currentUser = await syncCurrentUser();
-        if (!cancelled) setUser(currentUser);
         const [apiProducts, apiTransactions, apiStats] = await Promise.all([
           api.products.list(),
           api.transactions.list(),
@@ -482,6 +429,7 @@ setTransactions([]);
     </section>
   </main></Shell>;
 }
+
 function Assistant() {
   const user = getCurrentUser();
 
@@ -836,7 +784,9 @@ function Inventory() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadProducts() {
+    async function loadProducts(showLoading = false) {
+      if (showLoading) setLoading(true);
+
       try {
         const apiProducts = await api.products.list();
 
@@ -846,7 +796,7 @@ function Inventory() {
       } catch (error) {
         console.error('Failed to load inventory:', error);
 
-        if (!cancelled) {
+        if (!cancelled && showLoading) {
           setProducts([]);
         }
       } finally {
@@ -856,10 +806,15 @@ function Inventory() {
       }
     }
 
-    loadProducts();
+    const refresh = () => { void loadProducts(false); };
+    void loadProducts(true);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('pageshow', refresh);
 
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('pageshow', refresh);
     };
   }, []);
 
@@ -1058,27 +1013,27 @@ function AddProduct() {
       return;
     }
 
-    async function loadProduct() {
-      try {
-        const products = await api.products.list();
-        const found = products.find(product => product.id === params.id);
+async function loadProduct() {
+  try {
+    const products = await api.products.list();
+    const found = products.find(product => product.id === params.id);
 
-        if (found) {
-          setForm({
-            name: found.name,
-            category: found.category,
-            price: String(found.price),
-            cost: String(found.cost),
-            stock: String(found.stock),
-            unit: found.unit,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to load product:', error);
-      } finally {
-        setLoading(false);
-      }
+    if (found) {
+      setForm({
+        name: found.name,
+        category: found.category,
+        price: String(found.price),
+        cost: String(found.cost),
+        stock: String(found.stock),
+        unit: found.unit,
+      });
     }
+  } catch (error) {
+    console.error('Failed to load product:', error);
+  } finally {
+    setLoading(false);
+  }
+}
 
     loadProduct();
   }, [editing, params.id]);
@@ -1436,6 +1391,212 @@ function ProductDetails() {
 function TransactionRow({ transaction, onClick }: { transaction: Transaction; onClick?: () => void }) {
   return <button onClick={onClick} className="transaction-row" data-testid={`row-transaction-${transaction.id}`}><span className={`transaction-mark ${transaction.status}`}><Receipt size={16} /></span><span className="transaction-info"><strong>{transaction.item}</strong><small>{transaction.date} · {transaction.customer}</small></span><span className="transaction-amount"><b>{naira(transaction.total)}</b><small>{transaction.status === 'paid' ? 'Paid' : 'Pending'}</small></span><ChevronRight size={17} className="chevron" /></button>;
 }
+function ManualSale() {
+  const [, navigate] = useLocation();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [query, setQuery] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [status, setStatus] = useState<'paid' | 'pending'>('paid');
+  const [customer, setCustomer] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api.products.list()
+      .then(items => {
+        if (!cancelled) setProducts(items.map(productFromApi));
+      })
+      .catch(error => {
+        console.error('Failed to load products for manual sale:', error);
+        if (!cancelled) setProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const filteredProducts = products.filter(product =>
+    product.name.toLowerCase().includes(query.toLowerCase()) ||
+    product.category.toLowerCase().includes(query.toLowerCase())
+  );
+
+  const total = selectedProduct ? selectedProduct.price * quantity : 0;
+  const availableStock = selectedProduct?.stock ?? 0;
+  const quantityValid = Number.isInteger(quantity) && quantity > 0 && quantity <= availableStock;
+
+  const selectProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setQuantity(1);
+    setQuery('');
+  };
+
+  const confirm = async () => {
+    if (!selectedProduct || saving) return;
+
+    if (!quantityValid) {
+      window.alert(availableStock > 0
+        ? `Enter a quantity from 1 to ${availableStock}.`
+        : 'This product is out of stock.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const created = await api.transactions.create({
+        type: 'sale',
+        item: selectedProduct.name,
+        quantity,
+        total,
+        counterparty: customer.trim() || 'Walk-in customer',
+        status,
+        product_id: selectedProduct.id,
+      });
+
+      const profit = (selectedProduct.price - selectedProduct.cost) * quantity;
+      sessionStorage.setItem('mp-last-confirmation', JSON.stringify({
+        type: 'sale',
+        item: selectedProduct.name,
+        quantity,
+        total,
+        profit,
+        transactionId: created.id,
+      }));
+
+      navigate(`/transactions/${created.id}/confirm`);
+    } catch (error) {
+      console.error('Manual sale creation failed:', error);
+      window.alert(error instanceof ApiError ? error.message : 'Could not record this sale.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Shell>
+      <AppHeader title="Record sale" back="/transactions" />
+      <main className="screen-content form-page">
+        <span className="eyebrow">QUICK SALE</span>
+        <h1>Record a sale.</h1>
+        <p className="muted">Pick an item, enter the quantity, and MerchantPal will calculate the total price.</p>
+
+        <div className="surface-card" style={{ padding: 16, marginTop: 18 }}>
+          <label>Search or pick a product</label>
+          <div className="search-box" style={{ marginTop: 8 }}>
+            <Search size={18} />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search inventory…"
+              disabled={loading || saving}
+            />
+          </div>
+
+          {selectedProduct ? (
+            <div className="surface-card" style={{ marginTop: 12, padding: 14 }}>
+              <div className="section-heading" style={{ marginBottom: 8 }}>
+                <div>
+                  <span className="eyebrow">SELECTED ITEM</span>
+                  <h2>{selectedProduct.name}</h2>
+                </div>
+                <Button variant="ghost" onClick={() => setSelectedProduct(null)} disabled={saving}>Change</Button>
+              </div>
+              <p className="muted">{naira(selectedProduct.price)} / {selectedProduct.unit} · {selectedProduct.stock} in stock</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+              {filteredProducts.slice(0, 12).map(product => (
+                <button
+                  key={product.id}
+                  type="button"
+                  className="settings-row"
+                  onClick={() => selectProduct(product)}
+                  disabled={saving}
+                  style={{ textAlign: 'left' }}
+                >
+                  <span className="setting-icon mint"><ShoppingBag size={18} /></span>
+                  <span>
+                    <b>{product.name}</b>
+                    <small>{naira(product.price)} / {product.unit} · {product.stock} in stock</small>
+                  </span>
+                  <ChevronRight size={18} />
+                </button>
+              ))}
+              {!loading && filteredProducts.length === 0 && <p className="muted">No matching products.</p>}
+              {loading && <p className="muted">Loading products…</p>}
+            </div>
+          )}
+        </div>
+
+        {selectedProduct && (
+          <div className="form-stack" style={{ marginTop: 16 }}>
+            <label>Quantity
+              <input
+                type="number"
+                min="1"
+                max={selectedProduct.stock}
+                step="1"
+                value={quantity}
+                onChange={e => setQuantity(Number(e.target.value))}
+                disabled={saving}
+              />
+            </label>
+
+            <label>Customer (optional)
+              <input
+                value={customer}
+                onChange={e => setCustomer(e.target.value)}
+                placeholder="Walk-in customer"
+                disabled={saving}
+              />
+            </label>
+
+            <div className="surface-card" style={{ padding: 16 }}>
+              <span className="label muted">TOTAL PRICE</span>
+              <strong style={{ display: 'block', fontSize: 28, marginTop: 4 }}>{naira(total)}</strong>
+              <small className="muted">{naira(selectedProduct.price)} × {quantity || 0} {selectedProduct.unit}{quantity === 1 ? '' : 's'}</small>
+            </div>
+
+            <div>
+              <label>Payment status</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
+                <Button
+                  type="button"
+                  variant={status === 'paid' ? 'primary' : 'outline'}
+                  onClick={() => setStatus('paid')}
+                  disabled={saving}
+                >
+                  Paid
+                </Button>
+                <Button
+                  type="button"
+                  variant={status === 'pending' ? 'primary' : 'outline'}
+                  onClick={() => setStatus('pending')}
+                  disabled={saving}
+                >
+                  Pending
+                </Button>
+              </div>
+            </div>
+
+            <Button
+              className="full-width"
+              onClick={confirm}
+              disabled={saving || !quantityValid}
+            >
+              {saving ? 'Recording…' : 'Record sale'} {!saving && <Check size={17} />}
+            </Button>
+          </div>
+        )}
+      </main>
+    </Shell>
+  );
+}
+
 function Transactions() {
   const [, navigate] = useLocation();
 
@@ -1505,7 +1666,7 @@ function Transactions() {
 
           <IconButton
             label="new-transaction"
-            onClick={() => navigate('/assistant/voice')}
+            onClick={() => navigate('/transactions/manual')}
           >
             <Plus size={21} />
           </IconButton>
@@ -1733,7 +1894,7 @@ function TransactionDetails() {
 
         <Button
           className="full-width"
-          onClick={() => navigate('/assistant/voice')}
+          onClick={() => navigate('/transactions/manual')}
         >
           Record another sale <Plus size={17} />
         </Button>
@@ -1768,7 +1929,7 @@ function TransactionConfirmation() {
   const quantity = transaction?.quantity || 0;
   const item = transaction?.item || 'Transaction';
 
-  return <Shell><main className="confirmation-page"><div className="confirm-check"><Check size={38} /></div><span className="eyebrow">ALL DONE</span><h1>{loading ? 'Saving your numbers.' : title}</h1><p>{type === 'sale' ? 'Your numbers are up to date and your inventory has been adjusted when a product was linked.' : 'Your transaction is now in your business records.'}</p><div className="confirm-summary surface-card"><div><span className="label muted">TOTAL</span><strong>{naira(total)}</strong></div><div className="confirm-summary-row"><span>{item}</span><b>{quantity} item{quantity === 1 ? '' : 's'}</b></div>{type === 'sale' && <div className="confirm-summary-row"><span>Estimated profit</span><b className="paid-text">{naira(saved?.profit || 0)}</b></div>}</div><Button onClick={() => navigate('/')} className="full-width">Back to home <ArrowRight size={17} /></Button><Button variant="ghost" onClick={() => navigate('/transactions')} className="full-width">See all transactions</Button></main></Shell>;
+  return <Shell><main className="confirmation-page"><div className="confirm-check"><Check size={38} /></div><span className="eyebrow">ALL DONE</span><h1>{loading ? 'Saving your numbers.' : title}</h1><p>{type === 'sale' ? 'Your numbers are up to date and your inventory has been adjusted when a product was linked.' : 'Your transaction is now in your business records.'}</p><div className="confirm-summary surface-card"><div><span className="label muted">TOTAL PRICE / COST</span><strong>{naira(total)}</strong></div><div className="confirm-summary-row"><span>{item}</span><b>{quantity} item{quantity === 1 ? '' : 's'}</b></div>{type === 'sale' && <div className="confirm-summary-row"><span>Estimated profit</span><b className="paid-text">{naira(saved?.profit || 0)}</b></div>}</div><Button onClick={() => navigate('/')} className="full-width">Back to home <ArrowRight size={17} /></Button><Button variant="ghost" onClick={() => navigate('/transactions')} className="full-width">See all transactions</Button></main></Shell>;
 }
 
 function Analytics() {
@@ -1996,11 +2157,10 @@ function Notifications() {
 
   return <Shell><AppHeader title="Notifications" back="/" /><main className="screen-content"><div className="page-heading"><div><span className="eyebrow">KEEPING YOU IN THE LOOP</span><h1>Notifications</h1></div>{notes.length > 0 && <Button variant="ghost" onClick={() => setReadAll(true)}>Mark all read</Button>}</div>{loading ? <p className="muted">Loading notifications…</p> : notes.length === 0 ? <div className="empty-state surface-card"><div className="empty-illustration"><Bell size={32} /></div><h2>Nothing needs your attention.</h2><p>MerchantPal will show stock alerts here when your inventory gets low.</p></div> : <div className="notification-list">{notes.map((note, i) => { const Icon = note.kind === 'low_stock' ? Package : Bell; return <div className={`notification-item ${i === 0 && !readAll ? 'unread' : ''}`} key={note.id}><span className="notification-icon amber"><Icon size={18} /></span><div><b>{note.title}</b><p>{note.body}</p><small>{new Date(note.created_at).toLocaleString('en-NG')}</small></div>{i === 0 && !readAll && <i className="unread-dot" />}</div>; })}</div>}</main></Shell>;
 }
+
 function Profile() {
   const [, navigate] = useLocation();
- const [business, setBusiness] = useState<MockUser>(
-  () => getCurrentUser() ?? EMPTY_USER
-);
+  const [business, setBusiness] = useState<MockUser>(getCurrentUser() ?? EMPTY_USER);
   const [offlineOnly, setOfflineOnly] = useState(true);
   const [installEvent, setInstallEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -2012,8 +2172,12 @@ function Profile() {
     };
     window.addEventListener('beforeinstallprompt', onInstall);
 
-    syncCurrentUser()
-      .then(current => setBusiness(current))
+    api.profile.get()
+      .then(profile => {
+        const current = { ...profile, identifier: business.identifier };
+        setBusiness(current);
+        write('mp-user', current);
+      })
       .catch(error => console.error('Failed to load profile:', error))
       .finally(() => setLoading(false));
 
@@ -2043,7 +2207,7 @@ function Router() {
     <Route path="/welcome" component={Welcome} /><Route path="/login" component={() => <Login />} /><Route path="/signup" component={() => <Login signup />} /><Route path="/setup" component={Setup} />
     <Route path="/" component={Dashboard} /><Route path="/assistant" component={Assistant} /><Route path="/assistant/voice" component={VoiceRecording} /><Route path="/assistant/clarify" component={Clarify} />
     <Route path="/inventory" component={Inventory} /><Route path="/inventory/empty" component={() => <Shell><AppHeader title="Inventory" back="/inventory" /><main className="screen-content"><EmptyInventory onAdd={() => undefined} /></main></Shell>} /><Route path="/inventory/add" component={AddProduct} /><Route path="/inventory/:id/edit" component={AddProduct} /><Route path="/inventory/:id" component={ProductDetails} />
-    <Route path="/transactions" component={Transactions} /><Route path="/transactions/empty" component={() => <Shell><AppHeader title="Transactions" back="/" /><main className="screen-content"><div className="empty-state surface-card"><div className="empty-illustration"><Receipt size={32} /></div><h2>No sales yet.</h2><p>Record your first sale with MerchantPal Assistant.</p><Link href="/assistant/voice" className="mp-button mp-primary full-width">Record a sale <Mic size={17} /></Link></div></main></Shell>} /><Route path="/transactions/:id/confirm" component={TransactionConfirmation} /><Route path="/transactions/:id" component={TransactionDetails} />
+    <Route path="/transactions" component={Transactions} /><Route path="/transactions/manual" component={ManualSale} /><Route path="/transactions/empty" component={() => <Shell><AppHeader title="Transactions" back="/" /><main className="screen-content"><div className="empty-state surface-card"><div className="empty-illustration"><Receipt size={32} /></div><h2>No sales yet.</h2><p>Record your first sale with MerchantPal Assistant.</p><Link href="/assistant/voice" className="mp-button mp-primary full-width">Record a sale <Mic size={17} /></Link></div></main></Shell>} /><Route path="/transactions/:id/confirm" component={TransactionConfirmation} /><Route path="/transactions/:id" component={TransactionDetails} />
     <Route path="/analytics" component={Analytics} /><Route path="/insights" component={Insights} /><Route path="/notifications" component={Notifications} /><Route path="/profile" component={Profile} /><Route path="/offline" component={Offline} /><Route component={NotFoundPage} />
   </Switch></ErrorBoundary>;
 }

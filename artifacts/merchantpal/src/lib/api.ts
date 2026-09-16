@@ -57,6 +57,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const token = data.session?.access_token;
     response = await fetch(`${API_URL}/api${path}`, {
       ...init,
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers },
     });
   } catch {
