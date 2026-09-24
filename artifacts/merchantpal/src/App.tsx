@@ -163,11 +163,13 @@ function Login({ signup = false }: { signup?: boolean }) {
     try {
       if (signup) {
         const { data, error } = await supabase.auth.signUp({
-          email: form.identifier.trim(),
-          password: form.password,
-          options: { data: { full_name: form.name.trim() || 'Merchant' } },
-        });
-
+  email: form.identifier.trim(),
+  password: form.password,
+  options: {
+    data: { full_name: form.name.trim() || 'Merchant' },
+    emailRedirectTo: window.location.origin,
+  },
+});
         if (error) throw error;
 
         if (!data.session) {
@@ -583,7 +585,6 @@ function VoiceRecording() {
   const [elapsed, setElapsed] = useState(0);
 
 const recognitionRef = useRef<any>(null);
-const speechResultsRef = useRef<string[]>([]);
   useEffect(() => {
     const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!Recognition) {
@@ -592,21 +593,20 @@ const speechResultsRef = useRef<string[]>([]);
     }
 
     const recognition = new Recognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-NG';
+recognition.continuous = false;
+recognition.interimResults = false;
+recognition.maxAlternatives = 1;
+recognition.lang = 'en-NG';
 
-  recognition.onresult = (event: any) => {
-  for (let i = event.resultIndex; i < event.results.length; i += 1) {
-    speechResultsRef.current[i] = event.results[i][0].transcript.trim();
+recognition.onresult = (event: any) => {
+  const text = Array.from(event.results)
+    .map((result: any) => result[0]?.transcript || '')
+    .join(' ')
+    .trim();
+
+  if (text) {
+    setTranscript(text);
   }
-
-  setTranscript(
-    speechResultsRef.current
-      .filter(Boolean)
-      .join(' ')
-      .trim()
-  );
 };
 
     recognition.onerror = (event: any) => {
@@ -633,7 +633,6 @@ const speechResultsRef = useRef<string[]>([]);
 
   const start = () => {
     if (!supported) return;
-    speechResultsRef.current = [];
 setTranscript('');
     setElapsed(0);
     setStartedAt(Date.now());
