@@ -333,3 +333,245 @@
 .product-name-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .low-stock-badge, .detail-stock-badge { color: #ae6800; background: #fff3da; border-radius: 20px; padding: 4px 7px; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .detail-stock-badge { display: inline-block; margin-top: 10px; }
+
+html.dark {
+  background: #101819;
+  color-scheme: dark;
+}
+
+.dark body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.dark .surface-card,
+.dark .stat-card,
+.dark .stock-card,
+.dark .health-card,
+.dark .settings-list,
+.dark .transaction-filter-menu,
+.dark .transaction-empty,
+.dark .assistant-composer,
+.dark .search-box,
+.dark .form-stack input,
+.dark .form-stack select,
+.dark .form-stack textarea,
+.dark .search-box input,
+.dark .assistant-composer input,
+.dark .choice,
+.dark .receipt-card {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.dark .stat-card.mint,
+.dark .stat-card.rose {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .greeting p,
+.dark .muted,
+.dark .product-info span,
+.dark .transaction-info small,
+.dark .empty-stock,
+.dark .profile-head p,
+.dark .settings-row small,
+.dark .health-card small,
+.dark .notification-item p,
+.dark .notification-item small,
+.dark .detail-price small,
+.dark .detail-grid small,
+.dark .detail-receipt p,
+.dark .receipt-card-head,
+.dark .receipt-item small,
+.dark .receipt-line,
+.dark .confirmation-page > p,
+.dark .confirm-summary-row,
+.dark .chart-labels,
+.dark .insight-card p,
+.dark .offline-page > p {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .eyebrow {
+  color: #8eb5af;
+}
+
+.dark .app-header {
+  background: hsl(var(--background));
+}
+
+.dark .bottom-nav {
+  background: rgba(20, 29, 30, .97);
+  box-shadow: 0 -5px 20px rgba(0, 0, 0, .28);
+}
+
+.dark .bottom-item {
+  color: #9aa9a7;
+}
+
+.dark .bottom-item.active .nav-icon {
+  background: #21413e;
+}
+
+.dark .icon-button:hover {
+  background: #20312f;
+}
+
+.dark .mp-outline {
+  color: #8de0d4;
+  border-color: #50615f;
+}
+
+.dark .mp-ghost {
+  color: #8de0d4;
+}
+
+.dark .transaction-filter-menu button:hover,
+.dark .transaction-filter-menu button.selected {
+  background: #213c39;
+  color: #9be8dc;
+}
+
+.dark .form-stack label {
+  color: #d7e0de;
+}
+
+.dark .assistant-hero,
+.dark .insight-callout,
+.dark .clarify-note {
+  background: #18302e;
+}
+
+.dark .assistant-hero p,
+.dark .insight-callout p {
+  color: #a8c2bd;
+}
+
+.dark .chat-row.bot .chat-bubble {
+  background: #21413e;
+  color: #a9eee2;
+}
+
+.dark .chat-row.user .chat-bubble {
+  background: #086b62;
+  color: #fff;
+}
+
+.dark .voice-copy p,
+.dark .voice-timer {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .waveform i {
+  background: #496966;
+}
+
+.dark .clarify-line,
+.dark .sale-total,
+.dark .receipt-item,
+.dark .receipt-line,
+.dark .confirm-summary > div:first-child,
+.dark .notification-item,
+.dark .settings-row {
+  border-color: hsl(var(--border));
+}
+
+.dark .choice.selected {
+  background: #183b36;
+}
+
+.dark .settings-list {
+  background: hsl(var(--card));
+}
+
+.dark .settings-row {
+  color: hsl(var(--foreground));
+}
+
+.dark .period-tabs {
+  background: #243231;
+}
+
+.dark .period-tabs button {
+  color: #9aa9a7;
+}
+
+.dark .period-tabs button.selected {
+  background: #314341;
+  color: #a4ebe0;
+}
+
+.dark .chart {
+  border-color: #31403f;
+}
+
+.dark .chart i {
+  background: #416c66;
+}
+
+.dark .list-link {
+  color: hsl(var(--foreground));
+}
+
+.dark .stock-symbol,
+.dark .product-icon,
+.dark .icon-tile,
+.dark .transaction-mark,
+.dark .empty-illustration,
+.dark .detail-product-icon,
+.dark .offline-icon {
+  background: #193a36;
+  color: #8fe0d4;
+}
+
+.dark .product-card-low,
+.dark .product-icon-low {
+  border-color: #684f24;
+}
+
+.dark .product-icon-low,
+.dark .low-stock-badge,
+.dark .detail-stock-badge,
+.dark .stock-warning,
+.dark .stock-row-badge {
+  background: #49391f;
+  color: #f0bd68;
+}
+
+.dark .progress {
+  background: #30403e;
+}
+
+.dark .notification-item.unread {
+  background: linear-gradient(90deg, #183a35, transparent);
+}
+
+.dark .welcome-copy h1,
+.dark .welcome-copy p,
+.dark .welcome-main,
+.dark .auth-layout,
+.dark .setup-page {
+  color: hsl(var(--foreground));
+}
+
+.dark .welcome-copy h1 {
+  color: hsl(var(--foreground));
+}
+
+.dark .welcome-copy p,
+.dark .auth-intro p,
+.dark .auth-switch {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .welcome-foot {
+  color: #82908e;
+}
+
+.dark .form-divider span {
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+}

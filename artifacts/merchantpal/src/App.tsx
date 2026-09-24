@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Switch, useLocation, useParams } from 'wouter';
 import {
   ArrowLeft, ArrowRight, BarChart3, Bell, Bot, Check, ChevronRight, CircleHelp, Download,
+Moon, Sun,
   Clock3, CreditCard, DollarSign, Edit3, FileText, Filter, Home as HomeIcon,
   Info, Lightbulb, LogOut, Menu, Mic, MoreHorizontal, Package, Plus, Receipt,
   Search, Settings, ShoppingBag, Sparkles, Trash2, TrendingUp, UserRound, Users,
@@ -2163,8 +2164,16 @@ function Profile() {
   const [, navigate] = useLocation();
   const [business, setBusiness] = useState<MockUser>(getCurrentUser() ?? EMPTY_USER);
   const [offlineOnly, setOfflineOnly] = useState(true);
+  const [darkMode, setDarkMode] = useState(
+  () => localStorage.getItem('mp-theme') === 'dark'
+);
   const [installEvent, setInstallEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+  document.documentElement.classList.toggle('dark', darkMode);
+  localStorage.setItem('mp-theme', darkMode ? 'dark' : 'light');
+}, [darkMode]);
 
   useEffect(() => {
     const onInstall = (event: Event) => {
@@ -2197,7 +2206,24 @@ function Profile() {
     navigate('/welcome');
   };
 
-  return <Shell><AppHeader /><main className="screen-content profile-page"><div className="profile-head"><div className="avatar">{initials(business.name || 'Merchant')}</div><div><span className="eyebrow">YOUR ACCOUNT</span><h1>{loading ? 'Loading…' : business.name}</h1><p>{business.business}</p></div><IconButton label="edit-profile" onClick={() => navigate('/setup')}><Edit3 size={17} /></IconButton></div><div className="profile-section"><span className="label muted">BUSINESS</span><div className="settings-list"><Link href="/setup" className="settings-row"><span className="setting-icon mint"><ShoppingBag size={18} /></span><span><b>Business details</b><small>Update your business information</small></span><ChevronRight size={18} /></Link><Link href="/analytics" className="settings-row"><span className="setting-icon blue"><BarChart3 size={18} /></span><span><b>Profit analytics</b><small>See how your business is doing</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">PREFERENCES</span><div className="settings-list">{installEvent && <button className="settings-row" onClick={install}><span className="setting-icon mint"><Download size={18} /></span><span><b>Install MerchantPal</b><small>Add it to your home screen</small></span><ChevronRight size={18} /></button>}<div className="settings-row"><span className="setting-icon amber"><WifiOff size={18} /></span><span><b>Offline-first mode</b><small>Keep working without internet</small></span><button className={`toggle ${offlineOnly ? 'on' : ''}`} onClick={() => setOfflineOnly(!offlineOnly)} aria-label="toggle offline mode"><i /></button></div><Link href="/notifications" className="settings-row"><span className="setting-icon rose"><Bell size={18} /></span><span><b>Notifications</b><small>Stock alerts and business updates</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">SUPPORT</span><div className="settings-list"><button className="settings-row" onClick={() => window.alert('For the hackathon build, contact the MerchantPal team directly for support.')}><span className="setting-icon blue"><CircleHelp size={18} /></span><span><b>Help & feedback</b><small>Contact the MerchantPal team</small></span><ChevronRight size={18} /></button><button className="settings-row logout" onClick={logout}><span className="setting-icon rose"><LogOut size={18} /></span><span><b>Log out</b><small>Sign out of this account</small></span><ChevronRight size={18} /></button></div></div><p className="profile-version">MerchantPal v1.0.0 · Made for small businesses</p></main></Shell>;
+  return <Shell><AppHeader /><main className="screen-content profile-page"><div className="profile-head"><div className="avatar">{initials(business.name || 'Merchant')}</div><div><span className="eyebrow">YOUR ACCOUNT</span><h1>{loading ? 'Loading…' : business.name}</h1><p>{business.business}</p></div><IconButton label="edit-profile" onClick={() => navigate('/setup')}><Edit3 size={17} /></IconButton></div><div className="profile-section"><span className="label muted">BUSINESS</span><div className="settings-list"><Link href="/setup" className="settings-row"><span className="setting-icon mint"><ShoppingBag size={18} /></span><span><b>Business details</b><small>Update your business information</small></span><ChevronRight size={18} /></Link><Link href="/analytics" className="settings-row"><span className="setting-icon blue"><BarChart3 size={18} /></span><span><b>Profit analytics</b><small>See how your business is doing</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">PREFERENCES</span><div className="settings-list"> <div className="settings-row">
+  <span className="setting-icon blue">
+    {darkMode ? <Moon size={18} /> : <Sun size={18} />}
+  </span>
+
+  <span>
+    <b>Dark mode</b>
+    <small>{darkMode ? 'Use the light theme' : 'Use the darker theme'}</small>
+  </span>
+
+  <button
+    className={`toggle ${darkMode ? 'on' : ''}`}
+    onClick={() => setDarkMode(value => !value)}
+    aria-label="toggle dark mode"
+  >
+    <i />
+  </button>
+</div>{installEvent && <button className="settings-row" onClick={install}><span className="setting-icon mint"><Download size={18} /></span><span><b>Install MerchantPal</b><small>Add it to your home screen</small></span><ChevronRight size={18} /></button>}<div className="settings-row"><span className="setting-icon amber"><WifiOff size={18} /></span><span><b>Offline-first mode</b><small>Keep working without internet</small></span><button className={`toggle ${offlineOnly ? 'on' : ''}`} onClick={() => setOfflineOnly(!offlineOnly)} aria-label="toggle offline mode"><i /></button></div><Link href="/notifications" className="settings-row"><span className="setting-icon rose"><Bell size={18} /></span><span><b>Notifications</b><small>Stock alerts and business updates</small></span><ChevronRight size={18} /></Link></div></div><div className="profile-section"><span className="label muted">SUPPORT</span><div className="settings-list"><button className="settings-row" onClick={() => window.alert('For the hackathon build, contact the MerchantPal team directly for support.')}><span className="setting-icon blue"><CircleHelp size={18} /></span><span><b>Help & feedback</b><small>Contact the MerchantPal team</small></span><ChevronRight size={18} /></button><button className="settings-row logout" onClick={logout}><span className="setting-icon rose"><LogOut size={18} /></span><span><b>Log out</b><small>Sign out of this account</small></span><ChevronRight size={18} /></button></div></div><p className="profile-version">MerchantPal v1.0.0 · Made for small businesses</p></main></Shell>;
 }
 
 function Offline() { const [, navigate] = useLocation(); return <PublicFrame><div className="offline-page"><div className="offline-icon"><WifiOff size={32} /></div><span className="eyebrow">NO CONNECTION</span><h1>You’re offline,<br />but still in business.</h1><p>MerchantPal saves your work on this device, so you can keep recording sales and checking stock.</p><div className="offline-points"><span><Check size={16} />Your local data is safe</span><span><Check size={16} />Sales will sync when you’re back</span></div><Button onClick={() => navigate('/')} className="full-width">Continue offline <ArrowRight size={17} /></Button></div></PublicFrame>; }
