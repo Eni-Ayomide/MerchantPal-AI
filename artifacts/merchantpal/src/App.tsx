@@ -582,9 +582,8 @@ function VoiceRecording() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
-  const recognitionRef = useRef<any>(null);
-  const finalTranscriptRef = useRef('');
-
+const recognitionRef = useRef<any>(null);
+const speechResultsRef = useRef<string[]>([]);
   useEffect(() => {
     const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!Recognition) {
@@ -597,15 +596,18 @@ function VoiceRecording() {
     recognition.interimResults = true;
     recognition.lang = 'en-NG';
 
-    recognition.onresult = (event: any) => {
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalTranscriptRef.current += ` ${text}`;
-        else interim += ` ${text}`;
-      }
-      setTranscript(`${finalTranscriptRef.current} ${interim}`.trim());
-    };
+  recognition.onresult = (event: any) => {
+  for (let i = event.resultIndex; i < event.results.length; i += 1) {
+    speechResultsRef.current[i] = event.results[i][0].transcript.trim();
+  }
+
+  setTranscript(
+    speechResultsRef.current
+      .filter(Boolean)
+      .join(' ')
+      .trim()
+  );
+};
 
     recognition.onerror = (event: any) => {
       console.error('Speech recognition failed:', event.error);
@@ -631,8 +633,8 @@ function VoiceRecording() {
 
   const start = () => {
     if (!supported) return;
-    finalTranscriptRef.current = '';
-    setTranscript('');
+    speechResultsRef.current = [];
+setTranscript('');
     setElapsed(0);
     setStartedAt(Date.now());
     setRecording(true);
