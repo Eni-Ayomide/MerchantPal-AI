@@ -1579,68 +1579,381 @@ body {
   background: transparent;
 }
 
-
 /* =========================================================
-   MERCHANTPAL — LIGHT THEME
-   Step 2: Make theme toggle visually meaningful
+   MERCHANTPAL — COHERENT THEME LAYER
+   Fixes light/dark mixing while preserving the simple AI feel
    ========================================================= */
 
+/* ---------------------------------------------------------
+   LIGHT THEME
+   --------------------------------------------------------- */
+
 :root {
-  --mp-bg: #f4f7f6;
+  --mp-bg: #f3f7f5;
   --mp-surface: #ffffff;
-  --mp-surface-2: #f8faf9;
-  --mp-border: #dce4e1;
+  --mp-surface-2: #f8fbf9;
+  --mp-surface-3: #eef5f1;
+
+  --mp-border: #dfe8e3;
+  --mp-border-strong: #ccd9d2;
 
   --mp-text: #17201c;
-  --mp-text-soft: #66736d;
-  --mp-text-faint: #8b9792;
+  --mp-text-soft: #53615b;
+  --mp-muted: #7b8982;
 
   --mp-green: #16a34a;
   --mp-green-bright: #22c55e;
-  --mp-green-dark: #e7f8ed;
+  --mp-green-dark: #e7f7ed;
 
   --mp-danger: #dc3545;
-  --mp-warning: #c98a00;
-  --mp-warning-bg: #fff5d6;
+  --mp-danger-bg: #fff0f1;
+
+  --mp-warning: #b77900;
+  --mp-warning-bg: #fff5dc;
 }
 
-/* Light-mode canvas */
+/* Entire light canvas */
 .app-shell {
   background:
     radial-gradient(
-      circle at 78% 18%,
-      rgba(22, 163, 74, 0.045) 0,
-      rgba(22, 163, 74, 0) 28%
+      circle at 78% 15%,
+      rgba(22, 163, 74, 0.09) 0,
+      rgba(22, 163, 74, 0.035) 18%,
+      transparent 38%
     ),
-    #f4f7f6;
+    radial-gradient(
+      circle at 12% 78%,
+      rgba(22, 163, 74, 0.045) 0,
+      transparent 32%
+    ),
+    #f3f7f5;
 }
 
-/* Light-mode grid */
+/* Subtle business/grid structure */
 .app-shell::before {
   background-image:
     linear-gradient(
-      rgba(70, 90, 80, 0.045) 1px,
+      rgba(55, 85, 70, 0.035) 1px,
       transparent 1px
     ),
     linear-gradient(
       90deg,
-      rgba(70, 90, 80, 0.045) 1px,
+      rgba(55, 85, 70, 0.035) 1px,
+      transparent 1px
+    );
+
+  background-size: 56px 56px;
+}
+
+/* Keep the green data-line atmosphere in light mode */
+.app-shell::after {
+  background:
+    linear-gradient(
+      165deg,
+      transparent 0 34%,
+      rgba(22, 163, 74, 0.055) 34.1%,
+      transparent 34.3% 100%
+    ),
+    linear-gradient(
+      172deg,
+      transparent 0 49%,
+      rgba(22, 163, 74, 0.035) 49.1%,
+      transparent 49.3% 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0 68%,
+      rgba(22, 163, 74, 0.025) 68.1%,
+      transparent 68.3% 100%
+    );
+}
+
+/* ---------------------------------------------------------
+   LIGHT SURFACES
+   --------------------------------------------------------- */
+
+.stat-card,
+.product-card,
+.choice,
+.search-box,
+.inventory-summary,
+.transaction-total,
+.detail-panel,
+.insight-card,
+.assistant-hero {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+  color: var(--mp-text);
+}
+
+/* Don't flatten the original friendly rounded feel */
+.stat-card {
+  border-radius: 13px;
+}
+
+.product-card {
+  border-radius: 13px;
+}
+
+.choice {
+  border-radius: 11px;
+}
+
+.search-box {
+  border-radius: 10px;
+}
+
+/* ---------------------------------------------------------
+   LIGHT NAVIGATION
+   --------------------------------------------------------- */
+
+.bottom-nav {
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid var(--mp-border);
+  box-shadow: 0 -8px 24px rgba(30, 60, 45, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.bottom-item {
+  color: #718078;
+}
+
+.bottom-item.active {
+  color: var(--mp-green);
+}
+
+.bottom-item.active .nav-icon {
+  background: var(--mp-green-dark);
+}
+
+/* Header */
+.app-header {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--mp-border);
+  backdrop-filter: blur(16px);
+}
+
+.header-title {
+  color: var(--mp-text);
+}
+
+.icon-button {
+  color: var(--mp-muted);
+}
+
+.icon-button:hover {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+}
+
+/* ---------------------------------------------------------
+   LIGHT TEXT
+   --------------------------------------------------------- */
+
+.greeting p,
+.muted {
+  color: var(--mp-text-soft);
+}
+
+.eyebrow {
+  color: #668077;
+}
+
+.section-heading h2,
+.greeting h1,
+.page-heading h1,
+.screen-content > h1,
+.form-page h1,
+.clarify-page h1,
+.analytics-page h1,
+.offline-page h1 {
+  color: var(--mp-text);
+}
+
+/* ---------------------------------------------------------
+   LIGHT FORM CONTROLS
+   --------------------------------------------------------- */
+
+input,
+textarea,
+select {
+  color: var(--mp-text);
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9aa7a0;
+}
+
+/* ---------------------------------------------------------
+   DARK THEME
+   --------------------------------------------------------- */
+
+.dark {
+  --mp-bg: #070b14;
+  --mp-surface: #0d1421;
+  --mp-surface-2: #121b2a;
+  --mp-surface-3: #172233;
+
+  --mp-border: #202b3b;
+  --mp-border-strong: #2d3b4f;
+
+  --mp-text: #e8edf5;
+  --mp-text-soft: #b4bfcc;
+  --mp-muted: #8290a3;
+
+  --mp-green: #39f27a;
+  --mp-green-bright: #58f58d;
+  --mp-green-dark: #123a25;
+
+  --mp-danger: #ff5c6c;
+  --mp-danger-bg: #32151a;
+
+  --mp-warning: #f5b84b;
+  --mp-warning-bg: #342914;
+}
+
+/* Dark canvas */
+.dark .app-shell {
+  background:
+    radial-gradient(
+      circle at 78% 15%,
+      rgba(57, 242, 122, 0.085) 0,
+      rgba(57, 242, 122, 0.035) 18%,
+      transparent 38%
+    ),
+    radial-gradient(
+      circle at 15% 82%,
+      rgba(45, 110, 255, 0.035) 0,
+      transparent 32%
+    ),
+    #070b14;
+}
+
+/* Dark grid */
+.dark .app-shell::before {
+  background-image:
+    linear-gradient(
+      rgba(120, 145, 175, 0.035) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(120, 145, 175, 0.035) 1px,
       transparent 1px
     );
 }
 
-/* =========================================================
-   Light-mode panels
-   ========================================================= */
+/* Dark green data atmosphere */
+.dark .app-shell::after {
+  background:
+    linear-gradient(
+      165deg,
+      transparent 0 34%,
+      rgba(57, 242, 122, 0.045) 34.1%,
+      transparent 34.3% 100%
+    ),
+    linear-gradient(
+      172deg,
+      transparent 0 49%,
+      rgba(57, 242, 122, 0.028) 49.1%,
+      transparent 49.3% 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0 68%,
+      rgba(57, 242, 122, 0.018) 68.1%,
+      transparent 68.3% 100%
+    );
+}
 
-.card,
-.panel,
-.summary-card,
-.product-card,
-.assistant-hero,
-.choice,
-.chat-row.bot .chat-bubble {
+/* Dark surfaces */
+.dark .stat-card,
+.dark .product-card,
+.dark .choice,
+.dark .search-box,
+.dark .inventory-summary,
+.dark .transaction-total,
+.dark .detail-panel,
+.dark .insight-card,
+.dark .assistant-hero {
   background: var(--mp-surface);
   border-color: var(--mp-border);
   color: var(--mp-text);
+}
+
+/* Dark navigation */
+.dark .bottom-nav {
+  background: rgba(8, 12, 20, 0.94);
+  border-top-color: var(--mp-border);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+}
+
+.dark .bottom-item {
+  color: var(--mp-muted);
+}
+
+.dark .bottom-item.active {
+  color: var(--mp-green);
+}
+
+.dark .bottom-item.active .nav-icon {
+  background: var(--mp-green-dark);
+}
+
+/* Dark header */
+.dark .app-header {
+  background: rgba(7, 11, 20, 0.88);
+  border-bottom-color: var(--mp-border);
+}
+
+.dark .header-title {
+  color: var(--mp-text);
+}
+
+.dark .icon-button {
+  color: var(--mp-muted);
+}
+
+.dark .icon-button:hover {
+  background: var(--mp-surface-2);
+  color: var(--mp-green);
+}
+
+/* Dark text */
+.dark .greeting p,
+.dark .muted {
+  color: var(--mp-text-soft);
+}
+
+.dark .eyebrow {
+  color: #81938a;
+}
+
+.dark .greeting h1,
+.dark .page-heading h1,
+.dark .screen-content > h1,
+.dark .form-page h1,
+.dark .clarify-page h1,
+.dark .analytics-page h1,
+.dark .offline-page h1,
+.dark .section-heading h2 {
+  color: var(--mp-text);
+}
+
+/* Dark controls */
+.dark input,
+.dark textarea,
+.dark select {
+  color: var(--mp-text);
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #667487;
 }
