@@ -1578,3 +1578,69 @@ body {
   z-index: 1;
   background: transparent;
 }
+
+
+/* =========================================================
+   MERCHANTPAL — LIGHT THEME
+   Step 2: Make theme toggle visually meaningful
+   ========================================================= */
+
+:root {
+  --mp-bg: #f4f7f6;
+  --mp-surface: #ffffff;
+  --mp-surface-2: #f8faf9;
+  --mp-border: #dce4e1;
+
+  --mp-text: #17201c;
+  --mp-text-soft: #66736d;
+  --mp-text-faint: #8b9792;
+
+  --mp-green: #16a34a;
+  --mp-green-bright: #22c55e;
+  --mp-green-dark: #e7f8ed;
+
+  --mp-danger: #dc3545;
+  --mp-warning: #c98a00;
+  --mp-warning-bg: #fff5d6;
+}
+
+/* Light-mode canvas */
+.app-shell {
+  background:
+    radial-gradient(
+      circle at 78% 18%,
+      rgba(22, 163, 74, 0.045) 0,
+      rgba(22, 163, 74, 0) 28%
+    ),
+    #f4f7f6;
+}
+
+/* Light-mode grid */
+.app-shell::before {
+  background-image:
+    linear-gradient(
+      rgba(70, 90, 80, 0.045) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(70, 90, 80, 0.045) 1px,
+      transparent 1px
+    );
+}
+
+/* =========================================================
+   Light-mode panels
+   ========================================================= */
+
+.card,
+.panel,
+.summary-card,
+.product-card,
+.assistant-hero,
+.choice,
+.chat-row.bot .chat-bubble {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+  color: var(--mp-text);
+}
