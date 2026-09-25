@@ -575,3 +575,915 @@ html.dark {
   background: hsl(var(--background));
   color: hsl(var(--muted-foreground));
 }
+
+/* =========================================================
+   MERCHANTPAL OG VISUAL THEME
+   Visual-only override layer
+   ========================================================= */
+
+:root {
+  --mp-bg: #080c14;
+  --mp-surface: #0e1420;
+  --mp-surface-2: #121a28;
+  --mp-surface-3: #172132;
+  --mp-border: #222d3d;
+  --mp-border-strong: #2b394c;
+
+  --mp-text: #edf2f7;
+  --mp-text-soft: #c0cad5;
+  --mp-muted: #7f8b9d;
+
+  --mp-green: #39f27a;
+  --mp-green-bright: #54ff91;
+  --mp-green-dark: #123b25;
+  --mp-green-soft: #193b29;
+
+  --mp-warning: #f5b84b;
+  --mp-warning-bg: #3d3018;
+  --mp-danger: #ff6675;
+  --mp-danger-bg: #3b1e24;
+  --mp-blue: #67a8ff;
+  --mp-blue-bg: #172c49;
+
+  --background: 222 29% 5%;
+  --foreground: 210 25% 95%;
+  --border: 215 28% 18%;
+  --input: 215 28% 18%;
+  --ring: 143 88% 59%;
+  --card: 218 26% 9%;
+  --card-foreground: 210 25% 95%;
+  --primary: 143 88% 59%;
+  --primary-foreground: 145 60% 7%;
+  --secondary: 217 26% 14%;
+  --secondary-foreground: 210 25% 95%;
+  --muted: 216 22% 14%;
+  --muted-foreground: 215 15% 58%;
+  --accent: 145 45% 16%;
+  --accent-foreground: 143 88% 72%;
+  --destructive: 353 100% 70%;
+  --destructive-foreground: 353 45% 9%;
+
+  --radius: 0.5rem;
+}
+
+
+/* ---------------------------------------------------------
+   GLOBAL
+   --------------------------------------------------------- */
+
+html {
+  background: var(--mp-bg);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--mp-bg);
+  color: var(--mp-text);
+}
+
+.app-shell {
+  background: var(--mp-bg);
+}
+
+.app-frame {
+  background: var(--mp-bg);
+  color: var(--mp-text);
+}
+
+* {
+  border-color: var(--mp-border);
+}
+
+
+/* ---------------------------------------------------------
+   MAIN SURFACES
+   --------------------------------------------------------- */
+
+.surface-card,
+.stat-card,
+.stock-card,
+.health-card,
+.inventory-summary,
+.transaction-total,
+.receipt-card,
+.confirm-summary,
+.detail-panel,
+.analytics-hero,
+.insight-card,
+.list-link,
+.transaction-empty,
+.settings-list,
+.clarify-card,
+.choice,
+.sale-draft {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+  box-shadow: none;
+}
+
+.surface-card:hover,
+.stat-card:hover,
+.product-card:hover,
+.health-card:hover,
+.list-link:hover,
+.settings-row:hover {
+  border-color: var(--mp-border-strong);
+}
+
+.stat-card,
+.stock-card,
+.health-card,
+.inventory-summary,
+.transaction-total,
+.receipt-card,
+.confirm-summary,
+.detail-panel,
+.analytics-hero,
+.insight-card,
+.clarify-card,
+.sale-draft {
+  border-radius: 8px;
+}
+
+.product-card,
+.choice {
+  border-radius: 7px;
+}
+
+
+/* ---------------------------------------------------------
+   TEXT
+   --------------------------------------------------------- */
+
+.greeting p,
+.muted,
+.stock-header p,
+.product-info span,
+.transaction-info small,
+.empty-stock,
+.health-card small,
+.profile-head p,
+.settings-row small,
+.notification-item p,
+.notification-item small,
+.detail-price small,
+.detail-grid small,
+.detail-receipt p,
+.receipt-card-head,
+.receipt-item small,
+.receipt-line,
+.confirmation-page > p,
+.confirm-summary-row,
+.chart-labels,
+.insight-card p,
+.offline-page > p,
+.form-divider span,
+.auth-switch,
+.welcome-foot {
+  color: var(--mp-muted);
+}
+
+.eyebrow {
+  color: #8b98aa;
+  letter-spacing: .1em;
+}
+
+.section-heading h2,
+.page-heading h1,
+.greeting h1,
+.screen-content > h1,
+.form-page h1,
+.clarify-page h1,
+.analytics-page h1,
+.offline-page h1,
+.voice-copy h1 {
+  color: var(--mp-text);
+}
+
+
+/* ---------------------------------------------------------
+   HEADER
+   --------------------------------------------------------- */
+
+.app-header {
+  background: var(--mp-bg);
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.header-title {
+  color: var(--mp-text);
+}
+
+.brand-lockup,
+.brand-logo-lockup {
+  color: var(--mp-green);
+}
+
+.icon-button {
+  color: var(--mp-muted);
+  border-radius: 7px;
+}
+
+.icon-button:hover {
+  background: var(--mp-surface-2);
+  color: var(--mp-green);
+}
+
+
+/* ---------------------------------------------------------
+   BUTTONS
+   --------------------------------------------------------- */
+
+.mp-button {
+  border-radius: 7px;
+  min-height: 44px;
+  transition:
+    background-color .15s ease,
+    border-color .15s ease,
+    color .15s ease,
+    transform .15s ease;
+}
+
+.mp-primary {
+  background: var(--mp-green);
+  color: #061009;
+  border-color: var(--mp-green);
+  box-shadow: none;
+}
+
+.mp-primary:hover {
+  background: var(--mp-green-bright);
+  border-color: var(--mp-green-bright);
+}
+
+.mp-outline {
+  background: transparent;
+  color: var(--mp-green);
+  border-color: var(--mp-border-strong);
+}
+
+.mp-outline:hover {
+  background: var(--mp-green-dark);
+  border-color: var(--mp-green);
+}
+
+.mp-ghost {
+  color: var(--mp-green);
+}
+
+.mp-ghost:hover {
+  background: var(--mp-green-dark);
+}
+
+.mp-danger {
+  color: var(--mp-danger);
+  background: var(--mp-danger-bg);
+}
+
+
+/* ---------------------------------------------------------
+   BOTTOM NAV
+   --------------------------------------------------------- */
+
+.bottom-nav {
+  background: rgba(8, 12, 20, .97);
+  border-top: 1px solid var(--mp-border);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, .3);
+  backdrop-filter: blur(12px);
+}
+
+.bottom-item {
+  color: var(--mp-muted);
+}
+
+.bottom-item.active {
+  color: var(--mp-green);
+}
+
+.bottom-item .nav-icon {
+  border-radius: 8px;
+}
+
+.bottom-item.active .nav-icon {
+  background: var(--mp-green-dark);
+}
+
+
+/* ---------------------------------------------------------
+   OFFLINE STRIP
+   --------------------------------------------------------- */
+
+.offline-strip {
+  background: #2b2414;
+  color: var(--mp-warning);
+  border-bottom: 1px solid #4a3c20;
+}
+
+
+/* ---------------------------------------------------------
+   DASHBOARD
+   --------------------------------------------------------- */
+
+.talk-card {
+  background: var(--mp-green);
+  color: #07110a;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(57, 242, 122, .08);
+}
+
+.talk-card .talk-icon {
+  background: #0b1b12;
+  color: var(--mp-green);
+}
+
+.talk-card .label {
+  color: #0b1b12;
+}
+
+.talk-card p {
+  color: #173721;
+}
+
+.stat-card {
+  background: var(--mp-surface);
+}
+
+.stat-card.mint,
+.stat-card.rose {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+}
+
+.stat-trend {
+  color: var(--mp-green);
+}
+
+.stock-symbol,
+.product-icon,
+.icon-tile,
+.transaction-mark {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+  border-radius: 7px;
+}
+
+.stock-warning,
+.low-stock-badge,
+.detail-stock-badge,
+.stock-row-badge {
+  background: var(--mp-warning-bg);
+  color: var(--mp-warning);
+  border-radius: 5px;
+}
+
+.progress {
+  background: #1d2735;
+}
+
+.progress i {
+  background: var(--mp-green);
+}
+
+.progress.warning i {
+  background: var(--mp-warning);
+}
+
+
+/* ---------------------------------------------------------
+   TRANSACTIONS
+   --------------------------------------------------------- */
+
+.transaction-filter-menu {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .35);
+  border-radius: 7px;
+}
+
+.transaction-filter-menu button {
+  color: var(--mp-text-soft);
+}
+
+.transaction-filter-menu button:hover,
+.transaction-filter-menu button.selected {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+}
+
+.transaction-amount small,
+.paid-text {
+  color: var(--mp-green) !important;
+}
+
+.transaction-empty svg,
+.transaction-empty button {
+  color: var(--mp-green);
+}
+
+.chevron {
+  color: #566477;
+}
+
+
+/* ---------------------------------------------------------
+   SEARCH / INPUTS
+   --------------------------------------------------------- */
+
+.search-box,
+.form-stack input,
+.form-stack select,
+.form-stack textarea,
+.search-box input,
+.assistant-composer,
+.assistant-composer input {
+  background: var(--mp-surface);
+  color: var(--mp-text);
+  border-color: var(--mp-border-strong);
+  border-radius: 7px;
+}
+
+.search-box {
+  color: var(--mp-muted);
+}
+
+.form-stack label {
+  color: var(--mp-text-soft);
+}
+
+.form-stack input::placeholder,
+.form-stack textarea::placeholder,
+.search-box input::placeholder,
+.assistant-composer input::placeholder {
+  color: #5f6d7e;
+}
+
+.form-stack input:focus,
+.form-stack select:focus,
+.form-stack textarea:focus,
+.search-box:focus-within,
+.search-box input:focus,
+.assistant-composer:focus-within {
+  border-color: var(--mp-green);
+  box-shadow: 0 0 0 2px rgba(57, 242, 122, .1);
+}
+
+
+/* ---------------------------------------------------------
+   INVENTORY
+   --------------------------------------------------------- */
+
+.page-heading .icon-button {
+  background: var(--mp-green);
+  color: #061009;
+}
+
+.page-heading .icon-button:hover {
+  background: var(--mp-green-bright);
+}
+
+.summary-side {
+  border-color: var(--mp-border);
+}
+
+.product-actions .icon-button:hover {
+  background: var(--mp-green-dark);
+}
+
+.product-card-low {
+  border-color: #554321;
+}
+
+.product-icon-low {
+  background: var(--mp-warning-bg);
+  color: var(--mp-warning);
+}
+
+.empty-illustration {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+  border-radius: 10px;
+}
+
+.detail-product-icon {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+  border-radius: 12px;
+}
+
+.detail-price {
+  color: var(--mp-green);
+}
+
+.big-progress {
+  background: #1d2735;
+}
+
+
+/* ---------------------------------------------------------
+   ASSISTANT
+   --------------------------------------------------------- */
+
+.assistant-hero {
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: 8px;
+}
+
+.assistant-hero:after {
+  border-color: #263449;
+}
+
+.assistant-orb {
+  background: var(--mp-green);
+  color: #061009;
+  border-radius: 9px;
+}
+
+.assistant-hero p {
+  color: var(--mp-muted);
+}
+
+.chat-bubble {
+  border-radius: 8px;
+}
+
+.chat-row.bot .chat-bubble {
+  background: var(--mp-surface-2);
+  color: var(--mp-text-soft);
+  border: 1px solid var(--mp-border);
+}
+
+.chat-row.user .chat-bubble {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+  border: 1px solid #215434;
+}
+
+.voice-mini {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+  border-radius: 7px;
+}
+
+
+/* ---------------------------------------------------------
+   VOICE
+   --------------------------------------------------------- */
+
+.waveform i {
+  background: #2c3949;
+}
+
+.waveform.recording i {
+  background: var(--mp-green);
+}
+
+.voice-timer {
+  color: var(--mp-text-soft);
+}
+
+.record-button {
+  background: var(--mp-green);
+  color: #061009;
+  box-shadow: 0 0 0 1px rgba(57, 242, 122, .25);
+}
+
+.record-button span {
+  border-color: rgba(6, 16, 9, .35);
+}
+
+.stop-square {
+  background: #061009;
+}
+
+.voice-copy p {
+  color: var(--mp-muted);
+}
+
+
+/* ---------------------------------------------------------
+   CLARIFY / AI TRANSACTION
+   --------------------------------------------------------- */
+
+.clarify-note,
+.insight-callout {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+  border: 1px solid #215434;
+}
+
+.clarify-note span,
+.insight-callout p {
+  color: var(--mp-text-soft);
+}
+
+.choice {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+}
+
+.choice.selected {
+  border-color: var(--mp-green);
+  background: var(--mp-green-dark);
+}
+
+.choice .radio {
+  border-color: #5d6c7d;
+}
+
+.choice.selected .radio {
+  border-color: var(--mp-green);
+}
+
+.choice .radio i {
+  background: var(--mp-green);
+}
+
+.money {
+  color: var(--mp-green) !important;
+}
+
+
+/* ---------------------------------------------------------
+   RECEIPTS / CONFIRMATION
+   --------------------------------------------------------- */
+
+.receipt-icon,
+.confirm-check {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+}
+
+.receipt-item,
+.receipt-line,
+.confirm-summary > div:first-child {
+  border-color: var(--mp-border);
+}
+
+.receipt-line b,
+.confirm-summary-row b {
+  color: var(--mp-text);
+}
+
+
+/* ---------------------------------------------------------
+   ANALYTICS
+   --------------------------------------------------------- */
+
+.period-tabs {
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: 7px;
+}
+
+.period-tabs button {
+  color: var(--mp-muted);
+}
+
+.period-tabs button.selected {
+  background: var(--mp-surface-3);
+  color: var(--mp-green);
+  box-shadow: none;
+}
+
+.chart {
+  border-color: var(--mp-border);
+}
+
+.chart i {
+  background: #34534a;
+}
+
+.chart i.today {
+  background: var(--mp-green);
+}
+
+
+/* ---------------------------------------------------------
+   INSIGHTS
+   --------------------------------------------------------- */
+
+.insight-card > svg {
+  color: var(--mp-green);
+}
+
+.insight-number {
+  color: #536276;
+}
+
+.list-link {
+  color: var(--mp-text);
+}
+
+.insight-card a,
+.list-link b {
+  color: var(--mp-green);
+}
+
+
+/* ---------------------------------------------------------
+   NOTIFICATIONS
+   --------------------------------------------------------- */
+
+.notification-item {
+  border-color: var(--mp-border);
+}
+
+.notification-icon.mint,
+.setting-icon.mint {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+}
+
+.notification-icon.amber,
+.setting-icon.amber {
+  background: var(--mp-warning-bg);
+  color: var(--mp-warning);
+}
+
+.notification-icon.blue,
+.setting-icon.blue {
+  background: var(--mp-blue-bg);
+  color: var(--mp-blue);
+}
+
+.notification-icon.rose,
+.setting-icon.rose {
+  background: var(--mp-danger-bg);
+  color: var(--mp-danger);
+}
+
+.notification-item.unread {
+  background: linear-gradient(
+    90deg,
+    rgba(57, 242, 122, .08),
+    transparent
+  );
+}
+
+.unread-dot {
+  background: var(--mp-green);
+}
+
+
+/* ---------------------------------------------------------
+   PROFILE / SETTINGS
+   --------------------------------------------------------- */
+
+.avatar {
+  background: var(--mp-green);
+  color: #061009;
+}
+
+.settings-list {
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+  border-radius: 8px;
+}
+
+.settings-row {
+  color: var(--mp-text);
+  border-bottom-color: var(--mp-border);
+}
+
+.settings-row:hover {
+  background: var(--mp-surface-2);
+}
+
+.settings-row > svg {
+  color: #59677a;
+}
+
+.toggle {
+  background: #354253;
+}
+
+.toggle.on {
+  background: var(--mp-green);
+}
+
+.logout b {
+  color: var(--mp-danger);
+}
+
+.profile-version {
+  color: #59677a;
+}
+
+
+/* ---------------------------------------------------------
+   PUBLIC / AUTH SCREENS
+   --------------------------------------------------------- */
+
+.welcome-main,
+.public-frame,
+.public-main,
+.auth-layout,
+.setup-page {
+  background: var(--mp-bg);
+  color: var(--mp-text);
+}
+
+.welcome-brand {
+  color: var(--mp-green);
+}
+
+.welcome-copy h1 {
+  color: var(--mp-text);
+}
+
+.welcome-copy h1 em {
+  color: var(--mp-green);
+}
+
+.welcome-copy p,
+.auth-intro p {
+  color: var(--mp-muted);
+}
+
+.welcome-art {
+  opacity: .75;
+}
+
+.art-ring {
+  border-color: #294435;
+}
+
+.ring-two {
+  border-color: #1c3228;
+}
+
+.art-card {
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  color: var(--mp-text);
+  box-shadow: 0 18px 35px rgba(0, 0, 0, .25);
+}
+
+.art-card small {
+  color: var(--mp-green);
+}
+
+.art-dots {
+  opacity: .45;
+}
+
+.stepper span {
+  background: var(--mp-surface-2);
+  color: var(--mp-muted);
+}
+
+.stepper .step-active {
+  background: var(--mp-green);
+  color: #061009;
+}
+
+.stepper i {
+  background: var(--mp-border-strong);
+}
+
+.auth-switch a,
+.form-link {
+  color: var(--mp-green);
+}
+
+
+/* ---------------------------------------------------------
+   OFFLINE
+   --------------------------------------------------------- */
+
+.offline-icon {
+  background: var(--mp-green-dark);
+  color: var(--mp-green);
+}
+
+.offline-points {
+  color: var(--mp-text-soft);
+}
+
+.offline-points svg {
+  color: var(--mp-green);
+}
+
+
+/* ---------------------------------------------------------
+   DARK MODE TOGGLE
+   Keep .dark visually in the same OG family, but deeper.
+   --------------------------------------------------------- */
+
+.dark {
+  --background: 222 32% 4%;
+  --foreground: 210 28% 97%;
+  --border: 215 30% 16%;
+  --input: 215 30% 16%;
+  --card: 218 29% 7%;
+  --card-foreground: 210 28% 97%;
+  --primary: 143 92% 62%;
+  --primary-foreground: 145 65% 5%;
+  --secondary: 217 29% 11%;
+  --secondary-foreground: 210 28% 97%;
+  --muted: 217 25% 11%;
+  --muted-foreground: 215 16% 57%;
+  --accent: 145 44% 14%;
+  --accent-foreground: 143 92% 72%;
+}
