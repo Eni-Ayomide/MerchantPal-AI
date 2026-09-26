@@ -2,6 +2,8 @@ import json
 import logging
 from typing import Any
 
+from src.services.watsonx import get_watsonx_model
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,25 +12,48 @@ def explain_business_facts(
 ) -> str:
     """Turn verified facts into natural language without allowing recalculation."""
     try:
-        from anthropic import Anthropic
+        model = get_watsonx_model()
 
-        response = Anthropic().messages.create(
-            model="claude-opus-5",
-            max_tokens=300,
-            system=(
-                "Explain the business answer in plain language. Use only the supplied facts. "
-                "Do not calculate, estimate, infer, or change any number. If the facts are empty, "
-                "say that the records do not contain an answer. Return only the explanation."
-            ),
+        response = model.chat(
             messages=[
                 {
+                    "role": "system",
+                    "content": (
+                        "Explain the business answer in plain language. "
+                        "Use only the supplied facts. "
+                        "Do not calculate, estimate, infer, or change any number. "
+"Preserve all numbers exactly as supplied, and do not add a currency symbol "
+"or currency name unless it is explicitly present in the supplied facts. "
+                        "Do not invent information. "
+                        "If the facts are empty, say that the records do not contain an answer. "
+                        "Return only the explanation."
+                    ),
+                },
+                {
                     "role": "user",
-                    "content": json.dumps({"question": question, "intent": intent, "facts": facts}, default=str),
-                }
+                    "content": json.dumps(
+                        {
+                            "question": question,
+                            "intent": intent,
+                            "facts": facts,
+                        },
+                        default=str,
+                    ),
+                },
             ],
+            params={
+                "max_tokens": 300,
+                "temperature": 0,
+            },
         )
-        text = response.content[0].text.strip()
+
+        text = response["choices"][0]["message"]["content"].strip()
         return text or fallback
+
     except Exception:
-        logger.debug("Business explanation unavailable; using deterministic explanation", exc_info=True)
+        logger.debug(
+            "IBM watsonx business explanation unavailable; "
+            "using deterministic explanation",
+            exc_info=True,
+        )
         return fallback
