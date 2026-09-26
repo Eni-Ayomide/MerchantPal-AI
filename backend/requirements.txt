@@ -7,4 +7,5 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 python-dotenv==1.0.1
 anthropic>=0.69.0
+ibm-watsonx-ai>=1.7.2
 PyJWT>=2.10.1
