@@ -1,7 +1,10 @@
 import os
 
+from dotenv import load_dotenv
 from ibm_watsonx_ai import APIClient, Credentials
 from ibm_watsonx_ai.foundation_models import ModelInference
+
+load_dotenv()
 
 
 MODEL_ID = os.getenv("WATSONX_MODEL_ID", "llama-3-3-70b-instruct")

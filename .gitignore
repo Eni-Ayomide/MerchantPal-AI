@@ -53,3 +53,5 @@ api-friend.txt
 artifacts/merchantpal/.env
 api-friend.txt
 .vercel/
+
+backend/.env

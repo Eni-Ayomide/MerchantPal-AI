@@ -1,13 +1,10 @@
-"""LLM-based implementation of the AI step — a real understanding of
-free-form speech, using Claude, in place of the regex heuristics in
-transcript_parser.py. Requires ANTHROPIC_API_KEY (see .env.example).
+"""LLM-based implementation of the AI step using IBM watsonx.ai.
 
-Same contract as parse_transcript(): str in, ParsedTransaction out. Falls
-back to the rule-based parser automatically if no key is configured or the
-API call fails for any reason, so the pipeline keeps working either way —
-callers don't need to know which path ran.
+Falls back to the rule-based parser automatically if the IBM API call
+fails for any reason.
 """
 
+import json
 import logging
 from decimal import Decimal
 
@@ -15,6 +12,7 @@ from pydantic import BaseModel
 
 from src.models.transaction import TransactionType
 from src.services.transcript_parser import ParsedTransaction, parse_transcript
+from src.services.watsonx import get_watsonx_model
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +24,10 @@ _SYSTEM_PROMPT = (
     "description, quantity (default 1 if not stated), the total amount as a "
     "plain number, and the counterparty (customer/supplier name, or \"N/A\" "
     "for an expense). Set matched=false only if you cannot find any amount "
-    "at all."
+    "at all.\n\n"
+    "Return ONLY one valid JSON object with exactly these fields: "
+    "type, item, quantity, total, counterparty, matched. "
+    "Do not include markdown, explanations, examples, or additional text."
 )
 
 
@@ -41,18 +42,32 @@ class _LLMTransaction(BaseModel):
 
 def parse_transcript_with_llm(transcript: str) -> ParsedTransaction:
     try:
-        from anthropic import Anthropic
+        model = get_watsonx_model()
 
-        client = Anthropic()  # reads ANTHROPIC_API_KEY from the environment
-        response = client.messages.parse(
-            model="claude-opus-5",
-            max_tokens=2000,
-            output_config={"effort": "low"},  # simple extraction, keep it cheap
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": transcript}],
-            output_format=_LLMTransaction,
+        response = model.chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": _SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": transcript,
+                },
+            ],
+            params={
+                "max_tokens": 200,
+                "temperature": 0,
+            },
         )
-        parsed = response.parsed_output
+
+        content = response["choices"][0]["message"]["content"].strip()
+
+        
+
+        parsed_json = json.loads(content)
+        parsed = _LLMTransaction.model_validate(parsed_json)
+
         return ParsedTransaction(
             type=parsed.type,
             item=parsed.item,
@@ -61,9 +76,11 @@ def parse_transcript_with_llm(transcript: str) -> ParsedTransaction:
             counterparty=parsed.counterparty,
             matched=parsed.matched,
         )
+
     except Exception:
         logger.warning(
-            "LLM transcript parsing unavailable, falling back to the rule-based parser",
+            "IBM watsonx transcript parsing unavailable, "
+            "falling back to the rule-based parser",
             exc_info=True,
         )
         return parse_transcript(transcript)

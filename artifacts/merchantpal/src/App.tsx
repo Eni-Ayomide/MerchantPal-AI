@@ -45,6 +45,13 @@ const EMPTY_USER: MockUser = {
   identifier: '',
 };
 const initials = (name: string) => name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+const PROFILE_AVATAR_KEY = 'mp-profile-avatar';
+
+const getProfileAvatar = () => read<string | null>(PROFILE_AVATAR_KEY, null);
+
+const saveProfileAvatar = (avatar: string | null) => {
+  write(PROFILE_AVATAR_KEY, avatar);
+};
 const isLowStock = (stock: number) => stock < LOW_STOCK_THRESHOLD;
 const stockLabel = (stock: number) => stock === 0 ? 'Out of stock' : isLowStock(stock) ? 'Low stock' : 'Healthy';
 
@@ -61,10 +68,37 @@ function IconButton({ children, label, onClick, className = '' }: { children: Re
 }
 
 function AppHeader({ title = 'MerchantPal', back, action }: { title?: string; back?: string; action?: React.ReactNode }) {
+  const avatar = getProfileAvatar();
+
   return <header className="app-header safe-top">
-    {back ? <Link href={back} className="icon-button" data-testid="link-back"><ArrowLeft size={21} /></Link> : <div className="brand-lockup"><BrandLogo small /></div>}
+    {back ? (
+      <Link href={back} className="icon-button" data-testid="link-back">
+        <ArrowLeft size={21} />
+      </Link>
+    ) : (
+      <div className="brand-lockup">
+        <BrandLogo small />
+      </div>
+    )}
+
     {back && <strong className="header-title">{title}</strong>}
-    {action || (!back && <Link href="/notifications" className="icon-button" data-testid="link-notifications"><Bell size={20} /><span className="notification-dot" /></Link>)}
+
+    {action || (!back && (
+      <div className="header-actions">
+        <Link href="/notifications" className="icon-button" data-testid="link-notifications">
+          <Bell size={20} />
+          <span className="notification-dot" />
+        </Link>
+
+        <Link href="/profile" className="header-avatar" data-testid="link-profile-avatar">
+          {avatar ? (
+            <img src={avatar} alt="Profile" />
+          ) : (
+            <UserRound size={18} />
+          )}
+        </Link>
+      </div>
+    ))}
   </header>;
 }
 
